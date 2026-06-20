@@ -1,0 +1,437 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useDataStore } from '@/lib/data-store';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, Edit, Trash2, Search, Clock, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { StatusBadge } from '@/components/status-badge';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import Link from 'next/link';
+import * as api from '@/lib/api';
+import type { Hierarchy } from '@/lib/models';
+
+const SUBSYSTEM_STATUSES = {
+  'Design': { icon: Clock, color: 'text-blue-500' },
+  'Integration': { icon: Wrench, color: 'text-amber-500' },
+  'Testing': { icon: AlertCircle, color: 'text-orange-500' },
+  'Operational': { icon: CheckCircle2, color: 'text-green-500' },
+};
+
+export default function SubsystemsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { subsystems, systems, loading, createSubsystem, updateSubsystem, deleteSubsystem } = useDataStore();
+  const [search, setSearch] = useState('');
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  
+  const statusFilterParam = searchParams.get('status');
+  const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'all');
+  const [systemHierarchyNames, setSystemHierarchyNames] = useState<Hierarchy[]>([]);
+  const [subsystemHierarchyNames, setSubsystemHierarchyNames] = useState<Hierarchy[]>([]);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    system_id: 0,
+  });
+
+  useEffect(() => {
+    const fetchHierarchyNames = async () => {
+      try {
+        const systemsRes = await api.hierarchies.list('system');
+        setSystemHierarchyNames(systemsRes.data);
+      } catch (err) {
+        console.error('Failed to load system hierarchy names', err);
+      }
+    };
+
+    fetchHierarchyNames();
+  }, []);
+
+  useEffect(() => {
+    const fetchSubsystemNames = async () => {
+      if (!formData.system_id) {
+        setSubsystemHierarchyNames([]);
+        return;
+      }
+
+      const selectedSystem = systems.find((s) => s.id === formData.system_id);
+      const parentHierarchyId = selectedSystem
+        ? systemHierarchyNames.find((hierarchy) => hierarchy.name === selectedSystem.name)?.id
+        : undefined;
+
+      if (!parentHierarchyId) {
+        setSubsystemHierarchyNames([]);
+        return;
+      }
+
+      try {
+        const res = await api.hierarchies.list('subsystem', parentHierarchyId);
+        setSubsystemHierarchyNames(res.data);
+      } catch (err) {
+        console.error('Failed to load subsystem hierarchy names', err);
+      }
+    };
+
+    fetchSubsystemNames();
+  }, [formData.system_id, systemHierarchyNames, systems]);
+
+  const filtered = subsystems.filter((s) => {
+    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.description?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || s.status?.status_name === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const statusCounts = Object.keys(SUBSYSTEM_STATUSES).reduce((acc, status) => {
+    acc[status] = subsystems.filter(s => s.status?.status_name === status).length;
+    return acc;
+  }, {} as Record<string, number>);
+
+  async function handleCreate() {
+    if (!formData.name.trim() || !formData.system_id) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    try {
+      await createSubsystem(formData);
+      setFormData({ name: '', description: '', system_id: 0 });
+      setIsCreateOpen(false);
+      toast.success('Subsystem created successfully');
+    } catch {
+      toast.error('Failed to create subsystem');
+    }
+  }
+
+  async function handleUpdate() {
+    if (!editingId) return;
+    if (!formData.name.trim() || !formData.system_id) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    try {
+      await updateSubsystem(editingId, formData);
+      setFormData({ name: '', description: '', system_id: 0 });
+      setEditingId(null);
+      setIsEditOpen(false);
+      toast.success('Subsystem updated successfully');
+    } catch {
+      toast.error('Failed to update subsystem');
+    }
+  }
+
+  async function handleDelete(id: number) {
+    try {
+      await deleteSubsystem(id);
+      toast.success('Subsystem deleted successfully');
+    } catch {
+      toast.error('Failed to delete subsystem');
+    }
+  }
+
+  function openEdit(subsystem: typeof subsystems[0]) {
+    setEditingId(subsystem.id);
+    setFormData({
+      name: subsystem.name,
+      description: subsystem.description,
+      system_id: subsystem.system_id,
+    });
+    setIsEditOpen(true);
+  }
+
+  useEffect(() => {
+    const fetchHierarchyNames = async () => {
+      try {
+        const [systemsRes, subsystemsRes] = await Promise.all([
+          api.hierarchies.list('system'),
+          api.hierarchies.list('subsystem'),
+        ]);
+        setSystemHierarchyNames(systemsRes.data);
+        setSubsystemHierarchyNames(subsystemsRes.data);
+      } catch (err) {
+        console.error('Failed to load hierarchy names', err);
+      }
+    };
+
+    fetchHierarchyNames();
+  }, []);
+
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Subsystems</h1>
+        <p className="text-muted-foreground mt-2">Manage system subsystems</p>
+      </div>
+
+      {/* Status Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Status Overview</CardTitle>
+          <CardDescription>Click to filter by status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <button
+              onClick={() => {
+                setStatusFilter('all');
+                router.push('/subsystems');
+              }}
+              className={`text-left cursor-pointer transition-transform hover:scale-105 ${statusFilter === 'all' ? 'ring-2 ring-primary rounded-lg' : ''}`}
+            >
+              <Card className={`hover:shadow-lg ${statusFilter === 'all' ? 'bg-accent' : ''}`}>
+                <CardContent className="pt-6">
+                  <p className="text-sm font-medium text-muted-foreground">All Subsystems</p>
+                  <p className="text-2xl font-bold">{subsystems.length}</p>
+                </CardContent>
+              </Card>
+            </button>
+
+            {Object.entries(SUBSYSTEM_STATUSES).map(([statusName, { icon: Icon, color }]) => (
+              <button
+                key={statusName}
+                onClick={() => {
+                  setStatusFilter(statusName);
+                  router.push(`/subsystems?status=${encodeURIComponent(statusName)}`);
+                }}
+                className={`text-left cursor-pointer transition-transform hover:scale-105 ${statusFilter === statusName ? 'ring-2 ring-primary rounded-lg' : ''}`}
+              >
+                <Card className={`hover:shadow-lg ${statusFilter === statusName ? 'bg-accent' : ''}`}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">{statusName}</p>
+                        <p className="text-2xl font-bold">{statusCounts[statusName] || 0}</p>
+                      </div>
+                      <Icon className={`h-8 w-8 ${color}`} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-4 items-center">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search subsystems..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Subsystem
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Subsystem</DialogTitle>
+              <DialogDescription>Add a new subsystem</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Choose subsystem from hierarchy</Label>
+                <Select
+                  value={formData.name}
+                  onValueChange={(value) => setFormData({ ...formData, name: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select subsystem name" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subsystemHierarchyNames.map((hierarchy) => (
+                      <SelectItem key={hierarchy.id} value={hierarchy.name}>
+                        {hierarchy.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Description</Label>
+                <Input
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Details"
+                />
+              </div>
+              <div>
+                <Label>System *</Label>
+                <Select
+                  value={formData.system_id.toString()}
+                  onValueChange={(v) => setFormData({ ...formData, system_id: parseInt(v), name: '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select system" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {systems.map((s) => (
+                      <SelectItem key={s.id} value={s.id.toString()}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreate}>Create</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Subsystems</CardTitle>
+          <CardDescription>Total: {filtered.length}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>System</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      No subsystems found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filtered.map((subsystem) => {
+                    const system = systems.find((s) => s.id === subsystem.system_id);
+                    return (
+                      <TableRow key={subsystem.id} onClick={() => router.push(`/subsystems/${subsystem.id}`)}>
+                        <TableCell className="font-medium">{subsystem.name}</TableCell>
+                        <TableCell>{system?.name || 'N/A'}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={subsystem.status?.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-2 justify-end">
+                            <Link href={`/subsystems/${subsystem.id}`}>
+                              <Button variant="outline" size="sm">
+                                View
+                              </Button>
+                            </Link>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => { e.stopPropagation(); openEdit(subsystem)}}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            {/* <ConfirmDialog
+                              title="Delete Subsystem"
+                              description="Are you sure you want to delete this subsystem?"
+                              onConfirm={() => handleDelete(subsystem.id)}
+                            >
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </ConfirmDialog> */}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Subsystem</DialogTitle>
+            <DialogDescription>Update subsystem details</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Choose subsystem from hierarchy</Label>
+              <Select
+                value={formData.name}
+                onValueChange={(value) => setFormData({ ...formData, name: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select subsystem name" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subsystemHierarchyNames.map((hierarchy) => (
+                    <SelectItem key={hierarchy.id} value={hierarchy.name}>
+                      {hierarchy.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Input
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>System</Label>
+              <Select
+                value={formData.system_id.toString()}
+                onValueChange={(v) => setFormData({ ...formData, system_id: parseInt(v) })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {systems.map((s) => (
+                    <SelectItem key={s.id} value={s.id.toString()}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end pt-4">
+              <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdate}>Update</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
