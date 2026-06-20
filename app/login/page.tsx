@@ -22,6 +22,7 @@ export default function LoginPage() {
       router.replace('/dashboard');
     }
   }, [isAuthenticated, router]);
+  console.log('LoginPage rendered, isAuthenticated:', isAuthenticated);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
