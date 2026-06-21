@@ -18,7 +18,7 @@ export function EntityFlowFieldSlicer({
   onToggleField,
 }: EntityFlowFieldSlicerProps) {
   return (
-    <Panel position="top-right" className="!m-3">
+    <Panel position="top-right" className="m-3">
       <div className="w-52 rounded-lg border border-border bg-background/95 p-3 shadow-md backdrop-blur-sm">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Display Fields
