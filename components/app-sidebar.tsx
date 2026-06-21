@@ -22,6 +22,7 @@ import {
   Box,
   Cpu,
   Puzzle,
+  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -52,7 +53,8 @@ const navItems: NavItem[] = [
   { label: "Maintenance", href: "/maintenance", icon: Wrench },
 ];
 
-const hardwareItems: NavItem[] = [
+const hierarchyItems: NavItem[] = [
+  { label: "Systems Hierarchy", href: "/hierarchy", icon: GitBranch },
   { label: "Systems", href: "/systems", icon: Server },
   { label: "Subsystems", href: "/subsystems", icon: Network },
   { label: "Modules", href: "/modules", icon: Box },
@@ -200,14 +202,14 @@ export function AppSidebar() {
           <div className="mt-6">
             {!collapsed && (
               <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/40">
-                Hardware
+                Hierarchy
               </p>
             )}
             {collapsed && (
               <div className="mx-auto mb-2 h-px w-8 bg-sidebar-border" />
             )}
             <div className="space-y-1">
-              {hardwareItems.map((item) => (
+              {hierarchyItems.map((item) => (
                 <NavLink
                   key={item.href}
                   item={item}

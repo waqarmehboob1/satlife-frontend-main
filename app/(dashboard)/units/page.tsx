@@ -10,24 +10,19 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash2, Search, Clock, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Edit, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/status-badge';
-import { ConfirmDialog } from '@/components/confirm-dialog';
 import Link from 'next/link';
 import * as api from '@/lib/api';
-import type { Hierarchy } from '@/lib/models';
+import type { Hierarchy, Unit } from '@/lib/models';
 import { getComponentCountByUnitId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
 import { EntityNameWithFault } from '@/components/entity-fault-ping';
 import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
-
-const UNIT_STATUSES = {
-  'Manufacturing': { icon: Clock, color: 'text-blue-500' },
-  'Assembled': { icon: Wrench, color: 'text-amber-500' },
-  'Testing': { icon: AlertCircle, color: 'text-orange-500' },
-  'Qualified': { icon: CheckCircle2, color: 'text-green-500' },
-};
+import { HierarchyListDashboard } from '@/components/hierarchy/hierarchy-list-dashboard';
+import { buildHierarchyPageUrl } from '@/lib/hierarchy-page-filters';
+import { UNITS_DASHBOARD_CONFIG, UNIT_STATUS_NAMES } from '@/lib/hierarchy-dashboard-configs';
 
 export default function UnitsPage() {
   const router = useRouter();
@@ -35,7 +30,9 @@ export default function UnitsPage() {
   const { units, modules, components, loading, createUnit, updateUnit, deleteUnit } = useDataStore();
   const faultMap = useEntityFaultMap();
   const statusFilterParam = searchParams.get('status');
+  const parentFilterParam = searchParams.get('module_id');
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'all');
+  const [parentFilter, setParentFilter] = useState<string>(parentFilterParam || 'all');
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -94,17 +91,36 @@ export default function UnitsPage() {
     [components]
   );
 
+  const getStatusName = (unit: Unit) => unit.status?.status_name || 'Unknown';
+
   const filtered = units.filter((u) => {
     const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.description?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || u.status?.status_name === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesStatus = statusFilter === 'all' || getStatusName(u) === statusFilter;
+    const matchesParent =
+      parentFilter === 'all' || u.module_id?.toString() === parentFilter;
+    return matchesSearch && matchesStatus && matchesParent;
   });
 
-  const statusCounts = Object.keys(UNIT_STATUSES).reduce((acc, status) => {
-    acc[status] = units.filter(u => u.status?.status_name === status).length;
-    return acc;
-  }, {} as Record<string, number>);
+  const filteredParent = useMemo(
+    () => (parentFilter === 'all' ? null : modules.find((m) => String(m.id) === parentFilter)),
+    [parentFilter, modules]
+  );
+
+  const applyStatusFilter = (statusName: string) => {
+    setStatusFilter(statusName);
+    router.push(buildHierarchyPageUrl('/units', statusName, parentFilter, 'module_id'));
+  };
+
+  const applyParentFilter = (parentId: string) => {
+    setParentFilter(parentId);
+    router.push(buildHierarchyPageUrl('/units', statusFilter, parentId, 'module_id'));
+  };
+
+  useEffect(() => {
+    setStatusFilter(statusFilterParam || 'all');
+    setParentFilter(parentFilterParam || 'all');
+  }, [statusFilterParam, parentFilterParam]);
 
   async function handleCreate() {
     if (!formData.name.trim() || !formData.module_id) {
@@ -165,56 +181,48 @@ export default function UnitsPage() {
         <p className="text-muted-foreground mt-2">Manage module units and assemblies</p>
       </div>
 
-      {/* Status Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Status Overview</CardTitle>
-          <CardDescription>Click to filter by status</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-            <button
-              onClick={() => {
-                setStatusFilter('all');
-                router.push('/units');
-              }}
-              className={`text-left cursor-pointer transition-transform hover:scale-105 ${statusFilter === 'all' ? 'ring-2 ring-primary rounded-lg' : ''}`}
-            >
-              <Card className={`hover:shadow-lg ${statusFilter === 'all' ? 'bg-accent' : ''}`}>
-                <CardContent className="pt-6">
-                  <p className="text-sm font-medium text-muted-foreground">All Units</p>
-                  <p className="text-2xl font-bold">{units.length}</p>
-                </CardContent>
-              </Card>
-            </button>
+      <HierarchyListDashboard
+        config={UNITS_DASHBOARD_CONFIG}
+        items={units}
+        parents={modules}
+        children={components}
+        getChildParentId={(component) => component.unit_id}
+        getStatusName={getStatusName}
+        getParentId={(unit) => unit.module_id}
+        faultMap={faultMap}
+        activeStatusName={statusFilter}
+        activeParentId={parentFilter}
+        onStatusFilter={applyStatusFilter}
+        onParentFilter={applyParentFilter}
+      />
 
-            {Object.entries(UNIT_STATUSES).map(([statusName, { icon: Icon, color }]) => (
-              <button
-                key={statusName}
-                onClick={() => {
-                  setStatusFilter(statusName);
-                  router.push(`/units?status=${encodeURIComponent(statusName)}`);
-                }}
-                className={`text-left cursor-pointer transition-transform hover:scale-105 ${statusFilter === statusName ? 'ring-2 ring-primary rounded-lg' : ''}`}
-              >
-                <Card className={`hover:shadow-lg ${statusFilter === statusName ? 'bg-accent' : ''}`}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">{statusName}</p>
-                        <p className="text-2xl font-bold">{statusCounts[statusName] || 0}</p>
-                      </div>
-                      <Icon className={`h-8 w-8 ${color}`} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {(statusFilter !== 'all' || parentFilter !== 'all') && (
+        <div className="flex flex-wrap items-center gap-2">
+          {statusFilter !== 'all' && (
+            <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+              Status: <strong>{statusFilter}</strong>
+            </span>
+          )}
+          {filteredParent && (
+            <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+              Module: <strong>{filteredParent.name}</strong>
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStatusFilter('all');
+              setParentFilter('all');
+              router.push('/units');
+            }}
+          >
+            Clear filters
+          </Button>
+        </div>
+      )}
 
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-4 items-center flex-wrap">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
@@ -224,6 +232,32 @@ export default function UnitsPage() {
             className="pl-10"
           />
         </div>
+        <Select value={statusFilter} onValueChange={applyStatusFilter}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {UNIT_STATUS_NAMES.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={parentFilter} onValueChange={applyParentFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Filter by module" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Modules</SelectItem>
+            {modules.map((m) => (
+              <SelectItem key={m.id} value={m.id.toString()}>
+                {m.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -331,7 +365,7 @@ export default function UnitsPage() {
                         </TableCell>
                         <TableCell>{module?.name || 'N/A'}</TableCell>
                         <TableCell>
-                          <StatusBadge status={unit.status?.status_name || 'Unknown'} />
+                          <StatusBadge status={getStatusName(unit)} />
                         </TableCell>
                         <TableCell>
                           <EntityCountCell
