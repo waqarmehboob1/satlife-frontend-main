@@ -14,14 +14,19 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppNotifications, type AppNotification } from "@/hooks/use-app-notifications";
+import { useNotificationSync } from "@/hooks/use-notification-sync";
 import { formatDistanceToNow } from "date-fns";
 
 const TYPE_ICON: Record<AppNotification['type'], typeof Bell> = {
   open_maintenance_case: Wrench,
   confirmed_fault: AlertTriangle,
   identified_fault: AlertTriangle,
+  suspected_fault: AlertTriangle,
+  under_inspection_fault: Wrench,
   case_resolved: CheckCircle2,
   project_completed: Rocket,
+  project_updated: Rocket,
+  order_updated: Rocket,
   customer_status_change: Users,
 };
 
@@ -57,6 +62,7 @@ function NotificationRow({ item }: { item: AppNotification }) {
 export function Navbar() {
   const { user } = useAuth();
   const { theme, setTheme } = useTheme();
+  useNotificationSync();
   const { notifications, unreadCount, highPriorityCount, loading } = useAppNotifications();
 
   return (

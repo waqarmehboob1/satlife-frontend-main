@@ -21,6 +21,8 @@ import * as Models from '@/lib/models';
 import { resolveStatusName } from '@/lib/entity-status';
 import { getSubsystemCountBySystemId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
 
 
 
@@ -36,6 +38,7 @@ export default function SystemsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { systems, projects, subsystems, loading, createSystem, updateSystem, deleteSystem, statuses: storeStatuses } = useDataStore();
+  const faultMap = useEntityFaultMap();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -331,7 +334,14 @@ export default function SystemsPage() {
                     const project = projects.find((p) => p.id === system.project_id);
                     return (
                       <TableRow key={system.id} onClick={() => router.push(`/systems/${system.id}`)}>
-                        <TableCell className="font-medium">{system.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <EntityNameWithFault
+                            name={system.name}
+                            entityType="system"
+                            entityId={system.id}
+                            faultMap={faultMap}
+                          />
+                        </TableCell>
                         <TableCell>{project?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={getStatusName(system)} />

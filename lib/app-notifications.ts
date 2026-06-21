@@ -5,9 +5,13 @@ export type AppNotificationType =
   | 'open_maintenance_case'
   | 'confirmed_fault'
   | 'identified_fault'
+  | 'suspected_fault'
+  | 'under_inspection_fault'
   | 'case_resolved'
   | 'project_completed'
-  | 'customer_status_change';
+  | 'customer_status_change'
+  | 'order_updated'
+  | 'project_updated';
 
 export interface AppNotification {
   id: string;
@@ -71,30 +75,71 @@ export function buildAppNotifications(input: {
   }
 
   for (const fe of faultyEntities) {
+    const openCase = maintenanceCases.some(
+      (mc) =>
+        mc.id === fe.case_id &&
+        mc.status !== CaseStatus.Resolved &&
+        mc.status !== CaseStatus.Closed
+    );
+    if (!openCase) continue;
+
+    const label = fe.entity_name ?? fe.part_number ?? 'Entity';
+    const base = {
+      href: `/maintenance/cases/${fe.case_id}`,
+      timestamp: fe.updated_at ?? fe.identified_at ?? new Date().toISOString(),
+    };
+
     if (fe.status === FaultyEntityStatus.CONFIRMED_FAULTY) {
       notifications.push({
-        id: `fault-confirmed-${fe.id}`,
+        id: `fault-confirmed-${fe.id}-${fe.status}`,
         type: 'confirmed_fault',
         title: 'Confirmed fault',
-        message: `${fe.entity_name ?? fe.part_number ?? 'Entity'} requires attention`,
-        href: `/maintenance/cases/${fe.case_id}`,
-        timestamp: fe.identified_at ?? new Date().toISOString(),
+        message: `${label} requires attention`,
         priority: 'high',
+        ...base,
       });
     } else if (fe.status === FaultyEntityStatus.IDENTIFIED) {
       notifications.push({
-        id: `fault-identified-${fe.id}`,
+        id: `fault-identified-${fe.id}-${fe.status}`,
         type: 'identified_fault',
         title: 'Fault identified',
-        message: `${fe.entity_name ?? fe.part_number ?? 'Entity'} flagged for inspection`,
-        href: `/maintenance/cases/${fe.case_id}`,
-        timestamp: fe.identified_at ?? new Date().toISOString(),
+        message: `${label} flagged for inspection`,
         priority: 'medium',
+        ...base,
+      });
+    } else if (fe.status === FaultyEntityStatus.UNDER_INSPECTION) {
+      notifications.push({
+        id: `fault-inspection-${fe.id}-${fe.status}`,
+        type: 'under_inspection_fault',
+        title: 'Under inspection',
+        message: `${label} is being inspected`,
+        priority: 'medium',
+        ...base,
+      });
+    } else if (fe.status === FaultyEntityStatus.SUSPECTED) {
+      notifications.push({
+        id: `fault-suspected-${fe.id}-${fe.status}`,
+        type: 'suspected_fault',
+        title: 'Suspected fault',
+        message: `${label} marked as suspected`,
+        priority: 'medium',
+        ...base,
       });
     }
   }
 
   for (const project of projects) {
+    if (isRecent(project.updated_at)) {
+      notifications.push({
+        id: `project-updated-${project.id}-${project.updated_at}`,
+        type: 'project_updated',
+        title: 'Project updated',
+        message: `${project.name} — ${project.status_name ?? 'status changed'}`,
+        href: `/projects/${project.id}`,
+        timestamp: project.updated_at,
+        priority: 'low',
+      });
+    }
     const completed =
       project.status_name === 'Completed' || (project.progress ?? 0) >= 100;
     if (completed && isRecent(project.updated_at)) {

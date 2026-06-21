@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import type { AxiosResponse } from 'axios';
 import * as api from './api';
 // import * as maintenanceApi from '@/lib/maintenance';
@@ -149,7 +149,7 @@ interface DataStoreContextType {
   deleteConfigurationHistory: (id: number) => Promise<void>;
 
   // Refresh
-  refreshData: () => Promise<void>;
+  refreshData: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 const DataStoreContext = createContext<DataStoreContextType | undefined>(undefined);
@@ -175,7 +175,8 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     const setResult = <T,>(
       result: PromiseSettledResult<AxiosResponse<T>>,
       setter: React.Dispatch<React.SetStateAction<T>>,
@@ -190,7 +191,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
     try {
       // console.log('Refreshing data...');
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       const [
         usersRes,
@@ -275,14 +276,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       setError(message);
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // console.log("Refreshing data inside useEffect...");
     refreshData();
-  }, []);
+  }, [refreshData]);
 
 
   // Users

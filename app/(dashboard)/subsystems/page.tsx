@@ -19,6 +19,8 @@ import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
 import { getModuleCountBySubsystemId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
 
 const SUBSYSTEM_STATUSES = {
   'Design': { icon: Clock, color: 'text-blue-500' },
@@ -31,6 +33,7 @@ export default function SubsystemsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { subsystems, systems, modules, loading, createSubsystem, updateSubsystem, deleteSubsystem } = useDataStore();
+  const faultMap = useEntityFaultMap();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -338,7 +341,14 @@ export default function SubsystemsPage() {
                     const system = systems.find((s) => s.id === subsystem.system_id);
                     return (
                       <TableRow key={subsystem.id} onClick={() => router.push(`/subsystems/${subsystem.id}`)}>
-                        <TableCell className="font-medium">{subsystem.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <EntityNameWithFault
+                            name={subsystem.name}
+                            entityType="subsystem"
+                            entityId={subsystem.id}
+                            faultMap={faultMap}
+                          />
+                        </TableCell>
                         <TableCell>{system?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={subsystem.status?.status_name || 'Unknown'} />

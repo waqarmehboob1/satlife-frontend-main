@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,8 @@ import * as Models from '@/lib/models';
 import { Badge } from '@/components/ui/badge';
 import { getProjectCountByOrderId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
 
 type OrderForm = {
   order_number?: string
@@ -50,7 +53,9 @@ const emptyOrderForm: OrderForm = {
 };
 
 export default function OrdersPage() {
+  const router = useRouter();
   const {orders, customers, projects, loading, createOrder, updateOrder, deleteOrder} = useDataStore();
+  const faultMap = useEntityFaultMap();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -453,10 +458,19 @@ export default function OrdersPage() {
                     const customer = customers.find((c) => c.id === order.customer_id);
                     const status = statuses.find((s) => s.id === order.status_id);
                     return (
-                      <TableRow key={order.id} >
+                      <TableRow
+                        key={order.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => router.push(`/projects?order_id=${order.id}`)}
+                      >
                         <TableCell className="font-medium">
-                        {order.order_number}
-                      </TableCell>
+                          <EntityNameWithFault
+                            name={order.order_number}
+                            entityType="order"
+                            entityId={order.id}
+                            faultMap={faultMap}
+                          />
+                        </TableCell>
 
                       <TableCell>
                         <div>
@@ -529,11 +543,11 @@ export default function OrdersPage() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2 text-accent">
                             <Pencil  className='w-4.5 text-accent-foreground hover:text-blue-600'
-                              onClick={() => openEdit(order)}
+                              onClick={(e) => { e.stopPropagation(); openEdit(order); }}
                             />
                             |
                             <Trash2 className='w-4.5 text-accent-foreground hover:text-red-600'
-                              onClick={() => handleDelete(order.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
                             />
                         </div>
                       </TableCell>

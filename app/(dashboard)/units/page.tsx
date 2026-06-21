@@ -19,6 +19,8 @@ import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
 import { getComponentCountByUnitId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
 
 const UNIT_STATUSES = {
   'Manufacturing': { icon: Clock, color: 'text-blue-500' },
@@ -31,6 +33,7 @@ export default function UnitsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { units, modules, components, loading, createUnit, updateUnit, deleteUnit } = useDataStore();
+  const faultMap = useEntityFaultMap();
   const statusFilterParam = searchParams.get('status');
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'all');
   const [search, setSearch] = useState('');
@@ -318,7 +321,14 @@ export default function UnitsPage() {
                     const module = modules.find((m) => m.id === unit.module_id);
                     return (
                       <TableRow key={unit.id} onClick={() => router.push(`/units/${unit.id}`)}>
-                        <TableCell className="font-medium">{unit.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <EntityNameWithFault
+                            name={unit.name}
+                            entityType="unit"
+                            entityId={unit.id}
+                            faultMap={faultMap}
+                          />
+                        </TableCell>
                         <TableCell>{module?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={unit.status?.status_name || 'Unknown'} />

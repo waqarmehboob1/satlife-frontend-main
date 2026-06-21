@@ -20,6 +20,8 @@ import { getSystemCountByProjectId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
 import { Progress } from '@/components/ui/progress';
 import { ProjectProgressDialog } from '@/components/projects/project-progress-dialog';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
 
 interface StatusCount {
   status: string;
@@ -33,10 +35,12 @@ export default function ProjectsPage(){
   const router = useRouter();
   const searchParams = useSearchParams();
   const { projects, users, orders, systems, loading, createProject, updateProject, deleteProject, getEntityMaintenanceLogs } = useDataStore();
+  const faultMap = useEntityFaultMap();
   const [search, setSearch] = useState('');
   
-  // Get status filter from URL params
   const statusFilterParam = searchParams.get('status');
+  const orderFilterParam = searchParams.get('order_id');
+  const orderFilterId = orderFilterParam ? Number(orderFilterParam) : null;
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'Total');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -107,8 +111,8 @@ export default function ProjectsPage(){
                         || p.end_date.toLowerCase().includes(search.toLowerCase())  
                         || p.status_name?.toLowerCase().includes(search.toLowerCase()) 
     const matchesStatus = statusFilter === 'Total' || p.status_name === statusFilter;
-    console.log('Filtering project:', p.name, 'Matches Search:', matchesSearch, 'Matches Status:', matchesStatus);
-    return matchesSearch && matchesStatus;
+    const matchesOrder = !orderFilterId || p.order_id === orderFilterId;
+    return matchesSearch && matchesStatus && matchesOrder;
   });
 
   async function handleCreate() {
@@ -228,6 +232,7 @@ export default function ProjectsPage(){
 
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
+  const filteredOrder = orderFilterId ? orders.find((o) => o.id === orderFilterId) : null;
   const statusNames = statuses.map((status) => status.status_name);
   console.log("statusNames", statusNames);
   
@@ -250,6 +255,16 @@ export default function ProjectsPage(){
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
         <p className="text-muted-foreground mt-2 text-sm ">Manage satellite lifecycle projects</p>
+        {filteredOrder ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+              Filtered by order: <strong>{filteredOrder.order_number}</strong> — {filteredOrder.title}
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => router.push('/projects')}>
+              Clear order filter
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Project Status cards mini dashboard*/}
@@ -438,7 +453,14 @@ export default function ProjectsPage(){
                     const status = statuses.find((s) => s.id === project.status_id);
                     return (
                       <TableRow key={project.id}   onClick={() => router.push(`/projects/${project.id}`)}>
-                        <TableCell className="font-medium">{project.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <EntityNameWithFault
+                            name={project.name}
+                            entityType="project"
+                            entityId={project.id}
+                            faultMap={faultMap}
+                          />
+                        </TableCell>
                         <TableCell>{owner?.full_name || 'N/A'}</TableCell>
                         <TableCell><StatusBadge status={status?.status_name || 'Unknown'} /></TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(project.start_date).toLocaleDateString()}</TableCell>
