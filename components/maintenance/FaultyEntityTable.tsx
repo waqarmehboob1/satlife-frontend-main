@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Eye, Trash2 } from 'lucide-react';
+import { Check, Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -101,7 +101,7 @@ export function FaultyEntityTable({
                       onClick={() => onResolve(entity)}
                       className="h-8 w-8 p-0"
                     >
-                      <StatusBadge status="pass" />
+                      <Check className="h-4 w-4" />
                     </Button>
                   )}
                   {onDelete && (

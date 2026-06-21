@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,8 @@ import * as api from '@/lib/api';
 import * as Models from '@/lib/models';
 import Link from 'next/link';
 import { KPICard } from '@/components/kpi-card';
-import { projectShutdown } from 'next/dist/build/swc/generated-native';
+import { getSystemCountByProjectId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 interface StatusCount {
   status: string;
@@ -30,7 +31,7 @@ interface StatusCount {
 export default function ProjectsPage(){
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { projects, users, orders, loading, createProject, updateProject, deleteProject, getEntityMaintenanceLogs } = useDataStore();
+  const { projects, users, orders, systems, loading, createProject, updateProject, deleteProject, getEntityMaintenanceLogs } = useDataStore();
   const [search, setSearch] = useState('');
   
   // Get status filter from URL params
@@ -91,6 +92,11 @@ export default function ProjectsPage(){
     //   },
     // ];
   
+  const systemCountByProject = useMemo(
+    () => getSystemCountByProjectId(systems),
+    [systems]
+  );
+
   const filtered = projects.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) 
                         || p.description.toLowerCase().includes(search.toLowerCase()) 
@@ -399,6 +405,7 @@ export default function ProjectsPage(){
                   <TableHead>Status</TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
+                  <TableHead>Systems</TableHead>
                   <TableHead>% Progress</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -406,7 +413,7 @@ export default function ProjectsPage(){
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No projects found
                     </TableCell>
                   </TableRow>
@@ -421,6 +428,12 @@ export default function ProjectsPage(){
                         <TableCell><StatusBadge status={status?.status_name || 'Unknown'} /></TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(project.start_date).toLocaleDateString()}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(project.end_date).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(systemCountByProject, project.id)}
+                            label="Total systems"
+                          />
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground ">10%</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">

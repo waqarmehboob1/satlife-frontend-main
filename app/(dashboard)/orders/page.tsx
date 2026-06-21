@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 import * as api from '@/lib/api';
 import * as Models from '@/lib/models';
 import { Badge } from '@/components/ui/badge';
+import { getProjectCountByOrderId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 type OrderForm = {
   order_number?: string
@@ -48,7 +50,7 @@ const emptyOrderForm: OrderForm = {
 };
 
 export default function OrdersPage() {
-  const {orders, customers, loading, createOrder, updateOrder, deleteOrder} = useDataStore();
+  const {orders, customers, projects, loading, createOrder, updateOrder, deleteOrder} = useDataStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -59,6 +61,11 @@ export default function OrdersPage() {
   const [statuses, setStatuses] = useState<Models.Status[]>([]);
   const [loadingStatuses, setLoadingStatuses] = useState(true);
   const [customer, setcustomer] = useState<Models.Customer[]>([]);
+
+  const projectCountByOrder = useMemo(
+    () => getProjectCountByOrderId(projects),
+    [projects]
+  );
 
   const filtered = orders.filter((o) => {
     // const matchesSearch = o.order_number.toLowerCase().includes(search.toLowerCase());
@@ -428,6 +435,7 @@ export default function OrdersPage() {
                   <TableHead>Contract / PO</TableHead>
                   <TableHead>Value</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Projects</TableHead>
                   <TableHead>Delivery</TableHead>
                   <TableHead>PM</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -436,7 +444,7 @@ export default function OrdersPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No orders found
                     </TableCell>
                   </TableRow>
@@ -501,9 +509,13 @@ export default function OrdersPage() {
                           {order.status_name}
                         </Badge>
                       </TableCell>
-                      {/* <TableCell>
-                        {status?.name || "N/A"}
-                      </TableCell> */}
+
+                      <TableCell>
+                        <EntityCountCell
+                          count={getCount(projectCountByOrder, order.id)}
+                          label="Total projects"
+                        />
+                      </TableCell>
 
                       <TableCell>
                         {order.delivery_date

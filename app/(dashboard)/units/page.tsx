@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import Link from 'next/link';
 import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
+import { getComponentCountByUnitId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 const UNIT_STATUSES = {
   'Manufacturing': { icon: Clock, color: 'text-blue-500' },
@@ -28,7 +30,7 @@ const UNIT_STATUSES = {
 export default function UnitsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { units, modules, loading, createUnit, updateUnit, deleteUnit } = useDataStore();
+  const { units, modules, components, loading, createUnit, updateUnit, deleteUnit } = useDataStore();
   const statusFilterParam = searchParams.get('status');
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'all');
   const [search, setSearch] = useState('');
@@ -83,6 +85,11 @@ export default function UnitsPage() {
 
     fetchUnitNames();
   }, [formData.module_id, moduleHierarchyNames, modules]);
+
+  const componentCountByUnit = useMemo(
+    () => getComponentCountByUnitId(components),
+    [components]
+  );
 
   const filtered = units.filter((u) => {
     const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -295,13 +302,14 @@ export default function UnitsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Module</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Components</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No units found
                     </TableCell>
                   </TableRow>
@@ -314,6 +322,12 @@ export default function UnitsPage() {
                         <TableCell>{module?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={unit.status?.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(componentCountByUnit, unit.id)}
+                            label="Total components"
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">

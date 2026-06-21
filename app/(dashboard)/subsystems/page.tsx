@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import Link from 'next/link';
 import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
+import { getModuleCountBySubsystemId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 const SUBSYSTEM_STATUSES = {
   'Design': { icon: Clock, color: 'text-blue-500' },
@@ -28,7 +30,7 @@ const SUBSYSTEM_STATUSES = {
 export default function SubsystemsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { subsystems, systems, loading, createSubsystem, updateSubsystem, deleteSubsystem } = useDataStore();
+  const { subsystems, systems, modules, loading, createSubsystem, updateSubsystem, deleteSubsystem } = useDataStore();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -85,6 +87,11 @@ export default function SubsystemsPage() {
 
     fetchSubsystemNames();
   }, [formData.system_id, systemHierarchyNames, systems]);
+
+  const moduleCountBySubsystem = useMemo(
+    () => getModuleCountBySubsystemId(modules),
+    [modules]
+  );
 
   const filtered = subsystems.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -315,13 +322,14 @@ export default function SubsystemsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>System</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Modules</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No subsystems found
                     </TableCell>
                   </TableRow>
@@ -334,6 +342,12 @@ export default function SubsystemsPage() {
                         <TableCell>{system?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={subsystem.status?.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(moduleCountBySubsystem, subsystem.id)}
+                            label="Total modules"
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">

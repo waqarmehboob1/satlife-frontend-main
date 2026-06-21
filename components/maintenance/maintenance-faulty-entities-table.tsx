@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Eye } from 'lucide-react';
+import { Check, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -23,6 +23,7 @@ interface MaintenanceFaultyEntitiesTableProps {
   onView?: (entity: FaultyEntity) => void;
   onConfirmFaulty?: (entity: FaultyEntity) => void;
   onMarkHealthy?: (entity: FaultyEntity) => void;
+  onResolve?: (entity: FaultyEntity) => void;
   isLoading?: boolean;
 }
 
@@ -34,6 +35,7 @@ export function MaintenanceFaultyEntitiesTable({
   onView,
   onConfirmFaulty,
   onMarkHealthy,
+  onResolve,
   isLoading = false,
 }: MaintenanceFaultyEntitiesTableProps) {
   const allSelected = useMemo(
@@ -101,6 +103,16 @@ export function MaintenanceFaultyEntitiesTable({
                       className="h-8 w-8 p-0"
                     >
                       ✓
+                    </Button>
+                  )}
+                  {onResolve && entity.status !== 'resolved' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onResolve(entity)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Check className="h-4 w-4" />
                     </Button>
                   )}
                   {onMarkHealthy && entity.status !== 'healthy' && (

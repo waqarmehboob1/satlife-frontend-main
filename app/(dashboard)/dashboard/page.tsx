@@ -1,9 +1,29 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
+import { KPICard } from '@/components/kpi-card';
+import { MaintenanceMiniDashboard } from '@/components/maintenance/MaintenanceMiniDashboard';
+import { StatusBadge } from '@/components/status-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Rocket, Package, Wrench, AlertTriangle, Zap, Pause, CheckCircle, Clock } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Rocket,
+  Package,
+  Wrench,
+  AlertTriangle,
+  Zap,
+  Pause,
+  CheckCircle,
+  Clock,
+  Users,
+  UserCheck,
+  ShoppingCart,
+  Network,
+  AlertCircle,
+  ArrowRight,
+} from 'lucide-react';
 import {
   PieChart,
   Pie,
@@ -17,129 +37,289 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
+import {
+  getProjectStatusCounts,
+  getInProgressProjectCount,
+  getCompletedProjectCount,
+  getActiveProjectCount,
+  getMaintenanceStatusCounts,
+  getOpenMaintenanceCaseCount,
+  getCustomerStatusCounts,
+  getActiveCustomerCount,
+  getOrderStatusCounts,
+  getActiveFaultyEntityCount,
+  getInventoryTotal,
+  getHardwareFleetCounts,
+  projectStatusToChartData,
+  maintenanceStatusToChartData,
+  groupOrdersByMonth,
+  getRecentMaintenanceCases,
+  getRecentOrders,
+} from '@/lib/dashboard-stats';
 
-const PIE_COLORS = ['oklch(0.62 0.15 250)', 'oklch(0.55 0.14 250)', 'oklch(0.65 0.15 165)', 'oklch(0.70 0.18 45)', 'oklch(0.55 0.2 15)'];
+const PIE_COLORS = [
+  'oklch(0.62 0.15 250)',
+  'oklch(0.55 0.14 250)',
+  'oklch(0.65 0.15 165)',
+  'oklch(0.70 0.18 45)',
+  'oklch(0.55 0.2 15)',
+  'oklch(0.60 0.12 280)',
+];
+
+const CUSTOMER_STATUS_ICONS: Record<string, typeof Users> = {
+  Active: UserCheck,
+  Inactive: Users,
+  Prospect: Users,
+  Blacklisted: AlertCircle,
+};
+
+const ORDER_STATUS_COLORS: Record<string, 'blue' | 'green' | 'red' | 'amber' | 'orange' | 'slate' | 'emerald'> = {
+  Created: 'blue',
+  Confirmed: 'emerald',
+  Processing: 'amber',
+  Shipped: 'orange',
+  Delivered: 'green',
+  Cancelled: 'red',
+};
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { projects, orders, inventory, maintenanceLogs, loading, statuses } = useDataStore();
+  const {
+    customers,
+    orders,
+    projects,
+    systems,
+    subsystems,
+    modules,
+    units,
+    components,
+    inventory,
+    maintenanceCases,
+    faultyEntities,
+    statuses,
+    loading,
+  } = useDataStore();
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
 
-  // Calculate KPIs
   const totalProjects = projects.length;
-  const completedProjects = projects.filter((p) => p.status_id && p.status_id.toString().includes('4')).length;
-  const inProgressProjects = projects.filter((p) => p.status_id && p.status_id.toString().includes('2')).length;
   const totalOrders = orders.length;
-  const inventoryItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
-  const maintenanceRecords = maintenanceLogs.length;
+  const totalCustomers = customers.length;
+  const inventoryItems = getInventoryTotal(inventory);
+  const inProgressProjects = getInProgressProjectCount(projects);
+  const completedProjects = getCompletedProjectCount(projects);
+  const activeProjects = getActiveProjectCount(projects);
+  const activeCustomers = getActiveCustomerCount(customers, statuses);
+  const openMaintenanceCases = getOpenMaintenanceCaseCount(maintenanceCases);
+  const activeFaultyEntities = getActiveFaultyEntityCount(faultyEntities);
 
-  // Project status breakdown - count projects by status name
-  const projectStatuses = {
-    'Initiation': projects.filter(p => p.status_name === 'Initiation').length,
-    'Planning': projects.filter(p => p.status_name === 'Planning').length,
-    'Execution': projects.filter(p => p.status_name === 'Execution').length,
-    'Monitoring': projects.filter(p => p.status_name === 'Monitoring').length,
-    'Completed': projects.filter(p => p.status_name === 'Completed').length,
-    'On Hold': projects.filter(p => p.status_name === 'On Hold').length,
+  const projectStatuses = getProjectStatusCounts(projects);
+  const customerStatuses = getCustomerStatusCounts(customers, statuses);
+  const orderStatuses = getOrderStatusCounts(orders, statuses);
+  const maintenanceStatuses = getMaintenanceStatusCounts(maintenanceCases);
+
+  const projectStatusData = projectStatusToChartData(projectStatuses);
+  const maintenanceStatusData = maintenanceStatusToChartData(maintenanceStatuses);
+  const monthlyOrdersData = groupOrdersByMonth(orders, 6);
+  const hardwareFleetData = getHardwareFleetCounts({
+    systems,
+    subsystems,
+    modules,
+    units,
+    components,
+  });
+
+  const recentCases = getRecentMaintenanceCases(maintenanceCases, 5);
+  const recentOrders = getRecentOrders(orders, 5);
+
+  const handleNavigate = (path: string) => router.push(path);
+
+  const handleMaintenanceFilter = (status: string) => {
+    router.push(status === 'all' ? '/maintenance' : `/maintenance?status=${status}`);
   };
 
-  const handleKPIClick = (path: string) => {
-    router.push(path);
-  };
-
-  // Project status distribution (dummy calculation for demo)
-  const projectStatusData = [
-    { name: 'Planning', value: Math.max(1, totalProjects - inProgressProjects - completedProjects) },
-    { name: 'In Progress', value: inProgressProjects },
-    { name: 'Completed', value: completedProjects },
-  ].filter((d) => d.value > 0);
-
-  // Monthly orders data (dummy for demo)
-  const monthlyOrdersData = [
-    { month: 'Jan', orders: Math.floor(totalOrders * 0.1) || 0 },
-    { month: 'Feb', orders: Math.floor(totalOrders * 0.12) || 0 },
-    { month: 'Mar', orders: Math.floor(totalOrders * 0.15) || 0 },
-    { month: 'Apr', orders: totalOrders },
+  const executiveKPIs = [
+    {
+      title: 'Total Customers',
+      value: totalCustomers,
+      icon: Users,
+      color: 'blue' as const,
+      href: '/customers',
+      subtitle: `${activeCustomers} active`,
+    },
+    {
+      title: 'Active Customers',
+      value: activeCustomers,
+      icon: UserCheck,
+      color: 'emerald' as const,
+      href: '/customers',
+      subtitle: 'Currently active',
+    },
+    {
+      title: 'Total Orders',
+      value: totalOrders,
+      icon: ShoppingCart,
+      color: 'blue' as const,
+      href: '/orders',
+      subtitle: 'All orders',
+    },
+    {
+      title: 'Active Projects',
+      value: activeProjects,
+      icon: Rocket,
+      color: 'amber' as const,
+      href: '/projects',
+      subtitle: `${inProgressProjects} in execution`,
+    },
+    {
+      title: 'Open Cases',
+      value: openMaintenanceCases,
+      icon: AlertCircle,
+      color: 'orange' as const,
+      href: '/maintenance?status=open',
+      subtitle: 'Maintenance cases',
+    },
+    {
+      title: 'Total Systems',
+      value: systems.length,
+      icon: Network,
+      color: 'blue' as const,
+      href: '/systems',
+      subtitle: 'Hardware systems',
+    },
+    {
+      title: 'Faulty Entities',
+      value: activeFaultyEntities,
+      icon: Wrench,
+      color: 'red' as const,
+      href: '/maintenance',
+      subtitle: 'Under investigation',
+    },
+    {
+      title: 'Inventory Units',
+      value: inventoryItems,
+      icon: Package,
+      color: 'slate' as const,
+      href: '/inventory',
+      subtitle: 'Total quantity',
+    },
   ];
 
-  // Inventory by type (all same type, so just show total)
-  const inventoryData = [{ name: 'Components', value: inventoryItems }];
+  const customerStatusItems = Object.entries(customerStatuses).filter(([, count]) => count > 0);
+  const orderStatusItems = Object.entries(orderStatuses).filter(([, count]) => count > 0);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">Overview of satellite lifecycle management</p>
+        <h1 className="text-3xl font-bold tracking-tight">Executive Dashboard</h1>
+        <p className="text-muted-foreground mt-2">
+          Overview of customers, projects, maintenance, and fleet operations
+        </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <button
-          onClick={() => handleKPIClick('/projects')}
-          className="cursor-pointer transition-transform hover:scale-105"
-        >
-          <Card className="h-full hover:shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
-              <Rocket className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalProjects}</div>
-              <p className="text-xs text-muted-foreground">{inProgressProjects} in progress</p>
-            </CardContent>
-          </Card>
-        </button>
+      {/* Executive KPI strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {executiveKPIs.map((kpi) => (
+          <button
+            key={kpi.title}
+            onClick={() => handleNavigate(kpi.href)}
+            className="cursor-pointer transition-transform hover:scale-[1.02] text-left"
+          >
+            <KPICard
+              title={kpi.title}
+              value={kpi.value}
+              change={0}
+              icon={kpi.icon}
+              accentColor={kpi.color}
+            />
+          </button>
+        ))}
+      </div>
 
-        <button
-          onClick={() => handleKPIClick('/orders')}
-          className="cursor-pointer transition-transform hover:scale-105"
-        >
-          <Card className="h-full hover:shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalOrders}</div>
-              <p className="text-xs text-muted-foreground">All orders</p>
-            </CardContent>
-          </Card>
-        </button>
+      {/* Maintenance Cases */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Maintenance Cases</CardTitle>
+          <CardDescription>Click a status to filter the maintenance list</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MaintenanceMiniDashboard
+            cases={maintenanceCases}
+            onStatusFilter={handleMaintenanceFilter}
+          />
+        </CardContent>
+      </Card>
 
-        <button
-          onClick={() => handleKPIClick('/inventory')}
-          className="cursor-pointer transition-transform hover:scale-105"
-        >
-          <Card className="h-full hover:shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Inventory Items</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{inventoryItems}</div>
-              <p className="text-xs text-muted-foreground">Total components</p>
-            </CardContent>
-          </Card>
-        </button>
+      {/* Customer & Order status breakdowns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Status</CardTitle>
+            <CardDescription>Breakdown by customer account status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {customerStatusItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {customerStatusItems.map(([status, count]) => (
+                  <button
+                    key={status}
+                    onClick={() => handleNavigate('/customers')}
+                    className="cursor-pointer transition-transform hover:scale-[1.02] text-left"
+                  >
+                    <KPICard
+                      title={status}
+                      value={count}
+                      change={totalCustomers > 0 ? Math.round((100 * count) / totalCustomers) : 0}
+                      icon={CUSTOMER_STATUS_ICONS[status] ?? Users}
+                      accentColor={
+                        status === 'Active'
+                          ? 'green'
+                          : status === 'Inactive'
+                            ? 'slate'
+                            : status === 'Blacklisted'
+                              ? 'red'
+                              : 'blue'
+                      }
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">No customer data available</p>
+            )}
+          </CardContent>
+        </Card>
 
-        <button
-          onClick={() => handleKPIClick('/maintenanceLogs')}
-          className="cursor-pointer transition-transform hover:scale-105"
-        >
-          <Card className="h-full hover:shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Maintenance Logs</CardTitle>
-              <Wrench className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{maintenanceRecords}</div>
-              <p className="text-xs text-muted-foreground">All records</p>
-            </CardContent>
-          </Card>
-        </button>
+        <Card>
+          <CardHeader>
+            <CardTitle>Order Status</CardTitle>
+            <CardDescription>Breakdown by order lifecycle stage</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {orderStatusItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {orderStatusItems.map(([status, count]) => (
+                  <button
+                    key={status}
+                    onClick={() => handleNavigate('/orders')}
+                    className="cursor-pointer transition-transform hover:scale-[1.02] text-left"
+                  >
+                    <KPICard
+                      title={status}
+                      value={count}
+                      change={totalOrders > 0 ? Math.round((100 * count) / totalOrders) : 0}
+                      icon={Package}
+                      accentColor={ORDER_STATUS_COLORS[status] ?? 'blue'}
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">No order data available</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Project Status Breakdown */}
@@ -150,114 +330,44 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <button
-              onClick={() => handleKPIClick('/projects?status=Initiation')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Initiation</p>
-                      <p className="text-2xl font-bold">{projectStatuses['Initiation']}</p>
+            {(
+              [
+                { status: 'Initiation', icon: Clock, color: 'text-blue-500' },
+                { status: 'Planning', icon: Rocket, color: 'text-amber-500' },
+                { status: 'Execution', icon: Zap, color: 'text-yellow-500' },
+                { status: 'Monitoring', icon: AlertTriangle, color: 'text-orange-500' },
+                { status: 'Completed', icon: CheckCircle, color: 'text-green-500' },
+                { status: 'On Hold', icon: Pause, color: 'text-red-500' },
+              ] as const
+            ).map(({ status, icon: Icon, color }) => (
+              <button
+                key={status}
+                onClick={() =>
+                  handleNavigate(
+                    `/projects?status=${encodeURIComponent(status)}`
+                  )
+                }
+                className="text-left cursor-pointer transition-transform hover:scale-105"
+              >
+                <Card className="hover:shadow-lg">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">{status}</p>
+                        <p className="text-2xl font-bold">{projectStatuses[status] ?? 0}</p>
+                      </div>
+                      <Icon className={`h-8 w-8 ${color}`} />
                     </div>
-                    <Clock className="h-8 w-8 text-blue-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-
-            <button
-              onClick={() => handleKPIClick('/projects?status=Planning')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Planning</p>
-                      <p className="text-2xl font-bold">{projectStatuses['Planning']}</p>
-                    </div>
-                    <Rocket className="h-8 w-8 text-amber-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-
-            <button
-              onClick={() => handleKPIClick('/projects?status=Execution')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Execution</p>
-                      <p className="text-2xl font-bold">{projectStatuses['Execution']}</p>
-                    </div>
-                    <Zap className="h-8 w-8 text-yellow-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-
-            <button
-              onClick={() => handleKPIClick('/projects?status=Monitoring')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Monitoring</p>
-                      <p className="text-2xl font-bold">{projectStatuses['Monitoring']}</p>
-                    </div>
-                    <AlertTriangle className="h-8 w-8 text-orange-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-
-            <button
-              onClick={() => handleKPIClick('/projects?status=Completed')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                      <p className="text-2xl font-bold">{projectStatuses['Completed']}</p>
-                    </div>
-                    <CheckCircle className="h-8 w-8 text-green-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
-
-            <button
-              onClick={() => handleKPIClick('/projects?status=On%20Hold')}
-              className="text-left cursor-pointer transition-transform hover:scale-105"
-            >
-              <Card className="hover:shadow-lg">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">On Hold</p>
-                      <p className="text-2xl font-bold">{projectStatuses['On Hold']}</p>
-                    </div>
-                    <Pause className="h-8 w-8 text-red-500" />
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
+                  </CardContent>
+                </Card>
+              </button>
+            ))}
           </div>
         </CardContent>
       </Card>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Project Status Pie Chart */}
         <Card>
           <CardHeader>
             <CardTitle>Project Status Distribution</CardTitle>
@@ -285,92 +395,237 @@ export default function DashboardPage() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-75 flex items-center justify-center text-muted-foreground">
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                 No project data available
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Monthly Orders Trend */}
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Orders Trend</CardTitle>
-            <CardDescription>Order volume over time</CardDescription>
+            <CardTitle>Maintenance Cases by Status</CardTitle>
+            <CardDescription>Distribution of maintenance case statuses</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyOrdersData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="orders" stroke="oklch(0.62 0.15 250)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Inventory Overview */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Inventory Overview</CardTitle>
-            <CardDescription>Component inventory distribution</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {inventoryData.length > 0 && inventoryData[0].value > 0 ? (
+            {maintenanceStatusData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={inventoryData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value }) => `${name}: ${value}`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {inventoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
+                <BarChart data={maintenanceStatusData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="label" width={120} />
                   <Tooltip />
-                </PieChart>
+                  <Bar dataKey="value" fill="oklch(0.62 0.15 250)" radius={[0, 4, 4, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-75 flex items-center justify-center text-muted-foreground">
-                No inventory data available
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No maintenance case data available
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Project Summary Stats */}
         <Card>
           <CardHeader>
-            <CardTitle>Project Summary</CardTitle>
-            <CardDescription>Current project metrics</CardDescription>
+            <CardTitle>Orders Trend</CardTitle>
+            <CardDescription>Order volume over the last 6 months</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Total Projects</span>
-                <span className="font-bold">{totalProjects}</span>
+            {monthlyOrdersData.some((d) => d.orders > 0) ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={monthlyOrdersData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="orders"
+                    stroke="oklch(0.62 0.15 250)"
+                    strokeWidth={2}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No order data available
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">In Progress</span>
-                <span className="font-bold text-blue-600">{inProgressProjects}</span>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Hardware Fleet Overview</CardTitle>
+            <CardDescription>Systems hierarchy entity counts</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {hardwareFleetData.some((d) => d.count > 0) ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={hardwareFleetData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="oklch(0.65 0.15 165)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No hardware fleet data available
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Completed</span>
-                <span className="font-bold text-green-600">{completedProjects}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Completion Rate</span>
-                <span className="font-bold">{totalProjects > 0 ? `${Math.round((completedProjects / totalProjects) * 100)}%` : '0%'}</span>
-              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Project Summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Project Summary</CardTitle>
+          <CardDescription>Current project metrics</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Total Projects</p>
+              <p className="text-2xl font-bold">{totalProjects}</p>
             </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">In Progress</p>
+              <p className="text-2xl font-bold text-blue-600">{inProgressProjects}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Completed</p>
+              <p className="text-2xl font-bold text-green-600">{completedProjects}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Completion Rate</p>
+              <p className="text-2xl font-bold">
+                {totalProjects > 0
+                  ? `${Math.round((completedProjects / totalProjects) * 100)}%`
+                  : '0%'}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent Maintenance Cases</CardTitle>
+              <CardDescription>Latest reported cases</CardDescription>
+            </div>
+            <Link href="/maintenance">
+              <span className="text-sm text-primary flex items-center gap-1 hover:underline">
+                View all <ArrowRight className="h-3 w-3" />
+              </span>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentCases.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Case #</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Reported</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentCases.map((caseItem) => {
+                    const project = projects.find((p) => p.id === caseItem.project_id);
+                    return (
+                      <TableRow key={caseItem.id}>
+                        <TableCell>
+                          <Link
+                            href={`/maintenance/cases/${caseItem.id}`}
+                            className="font-medium hover:underline"
+                          >
+                            {caseItem.case_number}
+                          </Link>
+                          {project && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+                              {project.name}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={caseItem.status} />
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {caseItem.reported_at
+                            ? new Date(caseItem.reported_at).toLocaleDateString()
+                            : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">No maintenance cases yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent Orders</CardTitle>
+              <CardDescription>Latest customer orders</CardDescription>
+            </div>
+            <Link href="/orders">
+              <span className="text-sm text-primary flex items-center gap-1 hover:underline">
+                View all <ArrowRight className="h-3 w-3" />
+              </span>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentOrders.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Order #</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentOrders.map((order) => {
+                    const customer = customers.find((c) => c.id === order.customer_id);
+                    return (
+                      <TableRow key={order.id}>
+                        <TableCell>
+                          <Link href="/orders" className="font-medium hover:underline">
+                            {order.order_number}
+                          </Link>
+                          {customer && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+                              {customer.name}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={order.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {order.order_date
+                            ? new Date(order.order_date).toLocaleDateString()
+                            : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground py-4">No orders yet</p>
+            )}
           </CardContent>
         </Card>
       </div>

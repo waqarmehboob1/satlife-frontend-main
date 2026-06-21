@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,9 @@ import Link from 'next/link';
 import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
 import * as Models from '@/lib/models';
+import { resolveStatusName } from '@/lib/entity-status';
+import { getSubsystemCountBySystemId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 
 
@@ -32,7 +35,7 @@ const SYSTEM_STATUSES = {
 export default function SystemsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { systems, projects, loading, createSystem, updateSystem, deleteSystem } = useDataStore();
+  const { systems, projects, subsystems, loading, createSystem, updateSystem, deleteSystem, statuses: storeStatuses } = useDataStore();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -48,28 +51,38 @@ export default function SystemsPage() {
     name: '',
     description: '',
     project_id: 0,
+    status_id: 0,
   });
+
+  const subsystemCountBySystem = useMemo(
+    () => getSubsystemCountBySystemId(subsystems),
+    [subsystems]
+  );
+
+  const allStatuses = statuses.length ? statuses : storeStatuses;
+  const getStatusName = (system: (typeof systems)[0]) =>
+    resolveStatusName(system, allStatuses);
 
   const filtered = systems.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
       s.description.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || s.status?.status_name === statusFilter;
+    const matchesStatus = statusFilter === 'all' || getStatusName(s) === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const statusCounts = Object.keys(SYSTEM_STATUSES).reduce((acc, status) => {
-    acc[status] = systems.filter(s => s.status?.status_name === status).length;
+    acc[status] = systems.filter(s => getStatusName(s) === status).length;
     return acc;
   }, {} as Record<string, number>);
 
   async function handleCreate() {
-    if (!formData.name.trim() || !formData.project_id) {
+    if (!formData.name.trim() || !formData.project_id || !formData.status_id) {
       toast.error('Please fill in all required fields');
       return;
     }
     try {
       await createSystem(formData);
-      setFormData({ name: '', description: '', project_id: 0 });
+      setFormData({ name: '', description: '', project_id: 0, status_id: statuses[0]?.id ?? 0 });
       setIsCreateOpen(false);
     } catch {
       // Error handled by DataStore
@@ -78,13 +91,13 @@ export default function SystemsPage() {
 
   async function handleUpdate() {
     if (!editingId) return;
-    if (!formData.name.trim() || !formData.project_id) {
+    if (!formData.name.trim() || !formData.project_id || !formData.status_id) {
       toast.error('Please fill in all required fields');
       return;
     }
     try {
       await updateSystem(editingId, formData);
-      setFormData({ name: '', description: '', project_id: 0 });
+      setFormData({ name: '', description: '', project_id: 0, status_id: statuses[0]?.id ?? 0 });
       setEditingId(null);
       setIsEditOpen(false);
     } catch {
@@ -107,6 +120,7 @@ export default function SystemsPage() {
       name: system.name,
       description: system.description,
       project_id: system.project_id,
+      status_id: system.status_id ?? 0,
     });
     setIsEditOpen(true);
   }
@@ -120,6 +134,10 @@ export default function SystemsPage() {
             ]);
             setStatuses(statusRes.data);
             setSystemHierarchyNames(hierarchyRes.data);
+            const defaultStatus = statusRes.data.find((s) => s.status_name === 'Design') ?? statusRes.data[0];
+            if (defaultStatus) {
+              setFormData((prev) => ({ ...prev, status_id: defaultStatus.id }));
+            }
           } catch (err) {
             console.error("Failed to fetch statuses or hierarchy names", err);
           } finally {
@@ -255,6 +273,24 @@ export default function SystemsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label>Status *</Label>
+                <Select
+                  value={formData.status_id ? formData.status_id.toString() : ''}
+                  onValueChange={(v) => setFormData({ ...formData, status_id: parseInt(v) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statuses.map((status) => (
+                      <SelectItem key={status.id} value={status.id.toString()}>
+                        {status.status_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex gap-2 justify-end pt-4">
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                   Cancel
@@ -279,13 +315,14 @@ export default function SystemsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Project</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Subsystems</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No systems found
                     </TableCell>
                   </TableRow>
@@ -297,7 +334,13 @@ export default function SystemsPage() {
                         <TableCell className="font-medium">{system.name}</TableCell>
                         <TableCell>{project?.name || 'N/A'}</TableCell>
                         <TableCell>
-                          <StatusBadge status={system.status?.status_name || 'Unknown'} />
+                          <StatusBadge status={getStatusName(system)} />
+                        </TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(subsystemCountBySystem, system.id)}
+                            label="Total subsystems"
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
@@ -383,6 +426,24 @@ export default function SystemsPage() {
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id.toString()}>
                       {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={formData.status_id ? formData.status_id.toString() : ''}
+                onValueChange={(v) => setFormData({ ...formData, status_id: parseInt(v) })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statuses.map((status) => (
+                    <SelectItem key={status.id} value={status.id.toString()}>
+                      {status.status_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

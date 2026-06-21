@@ -1,6 +1,6 @@
 'use client';
 
-import { useState,useEffect } from 'react';
+import { useState,useEffect, useMemo } from 'react';
 import { Search, Plus, Edit,UserRoundPen ,Check,X, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +19,8 @@ import { Customer } from '@/lib/models';
 import { stringify } from 'querystring';
 import * as Models from '@/lib/models';
 import * as api from '@/lib/api';
+import { getOrderCountByCustomerId, getProjectCountByCustomerId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 const emptyCustomerForm: CustomerForm = {
   customer_code: '',
@@ -43,7 +45,7 @@ type CustomerForm = {
 };
 
 export default function CustomersPage() {
-  const { customers, loading, createCustomer, updateCustomer, deleteCustomer } = useDataStore();
+  const { customers, orders, projects, loading, createCustomer, updateCustomer, deleteCustomer } = useDataStore();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -70,6 +72,15 @@ export default function CustomersPage() {
 
     return matched ? getStatusValue(matched) : status;
   };
+  const orderCountByCustomer = useMemo(
+    () => getOrderCountByCustomerId(orders),
+    [orders]
+  );
+  const projectCountByCustomer = useMemo(
+    () => getProjectCountByCustomerId(orders, projects),
+    [orders, projects]
+  );
+
   const filtered = customers.filter((c) => {
     const term = search.toLowerCase();
 
@@ -395,7 +406,7 @@ export default function CustomersPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No customers found
                     </TableCell>
                   </TableRow>
@@ -473,14 +484,16 @@ export default function CustomersPage() {
                         </TableCell>
   
                       <TableCell>
-                        <div>
-                          <p className="font-medium">xxxx</p>
-                        </div>
+                        <EntityCountCell
+                          count={getCount(orderCountByCustomer, customer.id)}
+                          label="Total orders"
+                        />
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium">xxxx</p>
-                        </div>
+                        <EntityCountCell
+                          count={getCount(projectCountByCustomer, customer.id)}
+                          label="Total projects"
+                        />
                       </TableCell>
 
                       <TableCell className="text-right">

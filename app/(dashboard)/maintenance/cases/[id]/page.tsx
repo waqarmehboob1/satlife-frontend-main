@@ -12,20 +12,18 @@ import { maintenanceService } from '@/services/maintenance';
 import { MaintenanceCaseSummary } from '@/components/maintenance/maintenance-case-summary';
 import { InvestigationTree } from '@/components/maintenance/investigation-tree';
 import { MaintenanceFaultyEntitiesTable } from '@/components/maintenance/maintenance-faulty-entities-table';
+import { ResolveFaultDialog } from '@/components/maintenance/resolve-fault-dialog';
 import { CaseTimeline } from '@/components/maintenance/case-timeline';
 import { BulkActionsToolbar } from '@/components/maintenance/bulk-actions-toolbar';
 import { EntityDetailSheet } from '@/components/maintenance/entity-detail-sheet';
-import { FaultyEntity, MaintenanceCase, FaultyEntityStatus, MaintenanceAction } from '@/lib/models';
+import { FaultyEntity, MaintenanceCase, FaultyEntityStatus, MaintenanceAction, FaultType, ResolutionType, ActionType, ActionOutcome, CaseStatus } from '@/lib/models';
+import { buildInvestigationTree } from '@/lib/maintenance-tree';
+import { buildCaseTimelineEvents } from '@/lib/maintenance-timeline';
+import {
+  getDescendantFaultyEntityIds,
+  shouldAutoResolveCase,
+} from '@/lib/maintenance-case-status';
 import { InspectionPanel } from 'lucide-react';
-
-const buildTreeNodes = (entities: FaultyEntity[]) =>
-  entities.map((entity) => ({
-    id: entity.id,
-    part_number: entity.part_number || entity.entity_name || `${entity.entity_type}-${entity.entity_id}`,
-    display_name: entity.entity_name || entity.part_number || `${entity.entity_type} ${entity.entity_id}`,
-    status: entity.status,
-    children: [],
-  }));
 
 export default function MaintenanceCaseInvestigationPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -34,12 +32,23 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
 
   const [maintenanceCase, setMaintenanceCase] = useState<MaintenanceCase | null>(null);
   const [entities, setEntities] = useState<FaultyEntity[]>([]);
-  const [timeline, setTimeline] = useState<MaintenanceAction[]>([]);
+  const [maintenanceActions, setMaintenanceActions] = useState<MaintenanceAction[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [activeEntity, setActiveEntity] = useState<FaultyEntity | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolveEntity, setResolveEntity] = useState<FaultyEntity | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
+  const treeNodes = useMemo(() => buildInvestigationTree(entities), [entities]);
+
+  const timelineEventsView = useMemo(
+    () => buildCaseTimelineEvents(maintenanceCase, entities, maintenanceActions),
+    [maintenanceCase, entities, maintenanceActions]
+  );
 
   const counts = useMemo(() => {
     return entities.reduce(
@@ -61,35 +70,84 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
     loadInvestigationData();
   }, [caseId]);
 
-  const getDescendantEntityIds = (entityId: number, entityList: FaultyEntity[] = entities): number[] => {
-    const children = entityList.filter((entity) => entity.parent_faulty_entity_id === entityId);
+  const getDescendantEntityIds = (entityId: number, entityList: FaultyEntity[] = entities): number[] =>
+    getDescendantFaultyEntityIds(entityId, entityList);
 
-    return children.flatMap((child) => [child.id, ...getDescendantEntityIds(child.id, entityList)]);
+  const reloadCaseState = async () => {
+    const [caseRes, entitiesRes] = await Promise.all([
+      maintenanceService.getCase(caseId),
+      maintenanceService.getFaultyEntitiesByCaseId(caseId),
+    ]);
+
+    const updatedEntities = entitiesRes.data || [];
+
+    const timelineRes = await maintenanceService.getCaseTimeline(
+      caseId,
+      updatedEntities.map((entity) => entity.id)
+    );
+
+    setMaintenanceCase(caseRes.data);
+    setEntities(updatedEntities);
+    setMaintenanceActions(timelineRes.data || []);
+    return { caseData: caseRes.data, updatedEntities };
+  };
+
+  const tryAutoResolveCase = async (
+    updatedEntities: FaultyEntity[],
+    currentCase: MaintenanceCase | null = maintenanceCase
+  ) => {
+    if (!currentCase || !shouldAutoResolveCase(updatedEntities, currentCase.status)) {
+      return;
+    }
+
+    try {
+      const res = await maintenanceService.updateMaintenanceCase(caseId, {
+        status: CaseStatus.Resolved,
+        resolution_notes: 'All faulty entities resolved or cleared.',
+      });
+      setMaintenanceCase(res.data);
+      toast.success('Maintenance case marked as resolved.');
+    } catch (error) {
+      console.error('Auto-resolve case failed', error);
+      toast.error('Entities resolved, but case status could not be updated.');
+    }
   };
 
   const loadInvestigationData = async () => {
     if (!caseId) return;
 
     setIsLoading(true);
+    setTimelineLoading(true);
+
+    let loadedEntities: FaultyEntity[] = [];
+
     try {
-      const [caseRes, entitiesRes, timelineRes] = await Promise.all([
+      const [caseRes, entitiesRes] = await Promise.all([
         maintenanceService.getCase(caseId),
         maintenanceService.getFaultyEntitiesByCaseId(caseId),
-        maintenanceService.getFaultyEntitiesByCaseId(caseId),
-        // maintenanceService.getCaseTimeline(caseId),
       ]);
-      // console.log("Maintenance case Detail", caseRes.data);
-      // console.log("Maintenance case FaultyENtities", entitiesRes.data);
-      // console.log("Maintenance case Timeline", timelineRes.data);
 
+      loadedEntities = entitiesRes.data || [];
       setMaintenanceCase(caseRes.data);
-      setEntities(entitiesRes.data || []);
-      // setTimeline(timelineRes.data || []);
+      setEntities(loadedEntities);
     } catch (error) {
       console.error('Unable to load investigation data', error);
       toast.error('Failed to load maintenance investigation details.');
     } finally {
       setIsLoading(false);
+    }
+
+    try {
+      const timelineRes = await maintenanceService.getCaseTimeline(
+        caseId,
+        loadedEntities.map((entity) => entity.id)
+      );
+      setMaintenanceActions(timelineRes.data || []);
+    } catch (error) {
+      console.error('Unable to load case timeline', error);
+      setMaintenanceActions([]);
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -118,6 +176,21 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
       ? Array.from(new Set([...selectedIds, ...selectedIds.flatMap((entityId) => getDescendantEntityIds(entityId))]))
       : selectedIds;
 
+    // Validation: Fault Type is required before resolving
+    if (status === FaultyEntityStatus.RESOLVED) {
+      const missingFaultType = idsToUpdate.filter((id) => {
+        const entity = entities.find((e) => e.id === id);
+        return !entity?.fault_type;
+      });
+
+      if (missingFaultType.length > 0) {
+        toast.error(
+          `Cannot resolve: ${missingFaultType.length} entity(ies) missing fault type. Please select a fault type before resolving.`
+        );
+        return;
+      }
+    }
+
     if (status === FaultyEntityStatus.HEALTHY) {
       const childCount = idsToUpdate.length - selectedIds.length;
       const confirmed = window.confirm(
@@ -138,7 +211,8 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
         notes,
       });
       toast.success('Selected entities updated successfully.');
-      await loadInvestigationData();
+      const { caseData, updatedEntities } = await reloadCaseState();
+      await tryAutoResolveCase(updatedEntities, caseData);
       setSelectedIds([]);
     } catch (error) {
       console.error('Bulk update failed', error);
@@ -167,7 +241,8 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
     try {
       await maintenanceService.update_faulty_Children(entity.id, {status: FaultyEntityStatus.HEALTHY});
       toast.success('Entitie(s) marked as Healthy.');
-      await loadInvestigationData();
+      const { caseData, updatedEntities } = await reloadCaseState();
+      await tryAutoResolveCase(updatedEntities, caseData);
     } catch (error) {
       console.error('Confirm Healthy failed', error);
       toast.error('Unable to confirm entity as Healthy.');
@@ -176,50 +251,128 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
     }
   };
 
-  // const handleMarkHealthy = async (entity: FaultyEntity) => {
-  //   const descendantIds = getDescendantEntityIds(entity.id);
-  //         console.log("entity.id",entity.id)
-  //         console.log("descendantIds",descendantIds)
-  //   const totalEntities = [entity.id, ...descendantIds].length;
-  //         console.log("totalEntities",totalEntities)
-
-  //   const confirmed = window.confirm(
-  //     descendantIds.length > 0
-  //       ? `Mark this parent entity and ${descendantIds.length} child entity(s) as healthy?`
-  //       : 'Mark this entity as healthy?'
-  //   );
-
-  //   if (!confirmed) return;
-
-  //   setActionLoading(true);
-  //   try {
-  //     const targets = [entity.id, ...descendantIds];
-  //     console.log("targets",targets)
-
-  //     const results = await Promise.allSettled(targets.map((entityId) => maintenanceService.markEntityHealthy(entityId)));
-  //     console.log("results",results)
-
-  //     if (results.some((result) => result.status === 'rejected')) {
-  //       throw new Error('One or more healthy updates failed.');
-  //     }
-
-  //     toast.success(
-  //       totalEntities > 1
-  //         ? `Marked ${totalEntities} entity(s), including all child nodes, as healthy.`
-  //         : 'Entity marked as healthy.'
-  //     );
-  //     await loadInvestigationData();
-  //   } catch (error) {
-  //     console.error('Mark healthy failed', error);
-  //     toast.error('Unable to mark the selected entity and its child nodes healthy.');
-  //   } finally {
-  //     setActionLoading(false);
-  //   }
-  // };
+  const handleFaultTypeChange = async (entityId: number, faultType: string) => {
+    try {
+      const typedFaultType = faultType as FaultType;
+      await maintenanceService.updateFaultyEntity(entityId, { fault_type: typedFaultType });
+      setEntities((prev) =>
+        prev.map((entity) =>
+          entity.id === entityId ? { ...entity, fault_type: typedFaultType } : entity
+        )
+      );
+      toast.success('Fault type updated successfully.');
+    } catch (error) {
+      console.error('Failed to update fault type', error);
+      toast.error('Unable to update fault type.');
+    }
+  };
 
   const handleViewEntity = (entity: FaultyEntity) => {
     setActiveEntity(entity);
     setSheetOpen(true);
+  };
+
+  const handleOpenResolveDialog = (entity: FaultyEntity) => {
+    setResolveEntity(entity);
+    setResolveDialogOpen(true);
+  };
+
+  const handleResolveFault = async (
+    resolutionType: ResolutionType,
+    replacementPartNumber?: string,
+    notes?: string
+  ) => {
+    if (!resolveEntity) return;
+    if (resolveEntity.status === FaultyEntityStatus.CONFIRMED_FAULTY && !resolveEntity.fault_type) {
+      toast.error('Cannot resolve a confirmed faulty entity without a fault type.');
+      return;
+    }
+
+    setResolveLoading(true);
+
+    try {
+      const descendantIds = getDescendantEntityIds(resolveEntity.id).filter(
+        (id) => id !== resolveEntity.id
+      );
+      const cascadeIds = descendantIds.filter((id) => {
+        const entity = entities.find((e) => e.id === id);
+        return entity && entity.status !== FaultyEntityStatus.RESOLVED;
+      });
+
+      const changes: Partial<FaultyEntity> = {
+        status: FaultyEntityStatus.RESOLVED,
+        resolution_type: resolutionType,
+      };
+
+      if (replacementPartNumber) {
+        changes.part_number = replacementPartNumber;
+      }
+
+      await maintenanceService.updateFaultyEntity(resolveEntity.id, changes);
+
+      if (replacementPartNumber) {
+        await maintenanceService.updateEntityPartNumber(
+          resolveEntity.entity_type,
+          resolveEntity.entity_id,
+          replacementPartNumber
+        );
+      }
+
+      if (cascadeIds.length > 0) {
+        const missingFaultType = cascadeIds.filter((id) => {
+          const entity = entities.find((e) => e.id === id);
+          return entity?.status === FaultyEntityStatus.CONFIRMED_FAULTY && !entity.fault_type;
+        });
+
+        if (missingFaultType.length > 0) {
+          toast.error(
+            `${missingFaultType.length} child entity(ies) still need a fault type before the case can fully close.`
+          );
+        } else {
+          await maintenanceService.bulkUpdateFaultyEntities(caseId, {
+            entity_ids: cascadeIds,
+            status: FaultyEntityStatus.RESOLVED,
+            notes:
+              notes ||
+              `Cascaded resolution from ${resolveEntity.entity_name || resolveEntity.part_number || 'parent entity'}`,
+          });
+        }
+      }
+
+      const actionType =
+        resolutionType === ResolutionType.REPAIRED
+          ? ActionType.Repair
+          : resolutionType === ResolutionType.REPLACED
+          ? ActionType.Replacement
+          : resolutionType === ResolutionType.NO_FAULT_FOUND
+          ? ActionType.Testing
+          : resolutionType === ResolutionType.DECOMMISSIONED
+          ? ActionType.Disassembly
+          : ActionType.Inspection;
+
+      await maintenanceService.createMaintenanceAction({
+        faulty_entity_id: resolveEntity.id,
+        action_type: actionType,
+        outcome: ActionOutcome.Pass,
+        replacement_entity_type:resolveEntity.entity_type,
+        replacement_entity_id:resolveEntity.entity_id,
+        notes: notes ||
+          `Resolved via ${resolutionType}${replacementPartNumber ? `, replacement part ${replacementPartNumber}` : ''}`,
+        performed_at: new Date().toISOString(),
+      });
+
+      toast.success('Fault resolved successfully.');
+      setResolveDialogOpen(false);
+      setResolveEntity(null);
+
+      const { caseData, updatedEntities } = await reloadCaseState();
+      await tryAutoResolveCase(updatedEntities, caseData);
+    } catch (error) {
+      console.error('Resolve fault failed', error);
+      toast.error('Unable to resolve faulty entity.');
+    } finally {
+      setResolveLoading(false);
+    }
   };
 
   if (!Number.isFinite(caseId) || caseId <= 0) {
@@ -275,57 +428,59 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
             <TabsTrigger value="entities">Faulty Entities</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
           </TabsList>
-          <TabsContent value="tree">
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Use the hierarchy tree to inspect entity relationships and confirm whether a specific part is faulty.
-              </p>
-              <InvestigationTree
-                nodes={buildTreeNodes(entities)}
-                onSelect={(node) => {
-                  const selected = entities.find((entity) => entity.id === node.id);
-                  if (selected) {
-                    handleViewEntity(selected);
-                  }
-                }}
-                onMarkHealthy={(node) => {
-                  const selected = entities.find((entity) => entity.id === node.id);
-                  if (selected) {
-                    handleMarkHealthy(selected);
-                  }
-                }}
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="entities">
-            <div className="space-y-4">
-              <MaintenanceFaultyEntitiesTable
-                entities={entities}
-                selectedIds={selectedIds}
-                onToggleSelect={handleToggleSelect}
-                onToggleSelectAll={handleToggleSelectAll}
-                onView={handleViewEntity}
-                onConfirmFaulty={handleConfirmFaulty}
-                onMarkHealthy={handleMarkHealthy}
-                isLoading={isLoading}
-              />
-              <BulkActionsToolbar
-                selectedCount={selectedIds.length}
-                isLoading={actionLoading}
-                onConfirmFaulty={() => updateSelectedStatus(FaultyEntityStatus.CONFIRMED_FAULTY, 'Bulk confirmed during investigation')}
-                onMarkHealthy={() => updateSelectedStatus(FaultyEntityStatus.HEALTHY, 'Bulk marked healthy during investigation')}
-                onSetUnderInspection={() => updateSelectedStatus(FaultyEntityStatus.UNDER_INSPECTION, 'Bulk set under inspection')}
-                onResolve={() => updateSelectedStatus(FaultyEntityStatus.RESOLVED, 'Bulk resolved during investigation')}
-                onRemoveFalsePositive={() => updateSelectedStatus(FaultyEntityStatus.FALSEPOSITIVE, 'Bulk marked false positive')}
-              />
-            </div>
-          </TabsContent>
-          <TabsContent value="timeline">
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Review investigation actions and outcomes recorded against this case.</p>
-              <CaseTimeline logs={timeline} />
-            </div>
-          </TabsContent>
+            <TabsContent value="tree">
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Use the hierarchy tree to inspect entity relationships and confirm whether a specific part is faulty.
+                </p>
+                <InvestigationTree
+                  nodes={treeNodes}
+                  onSelect={(node) => {
+                    const selected = entities.find((entity) => entity.id === node.id);
+                    if (selected) {
+                      handleViewEntity(selected);
+                    }
+                  }}
+                  onMarkHealthy={(node) => {
+                    const selected = entities.find((entity) => entity.id === node.id);
+                    if (selected) {
+                      handleMarkHealthy(selected);
+                    }
+                  }}
+                  onFaultTypeChange={handleFaultTypeChange}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="entities">
+              <div className="space-y-4">
+                <MaintenanceFaultyEntitiesTable
+                  entities={entities}
+                  selectedIds={selectedIds}
+                  onToggleSelect={handleToggleSelect}
+                  onToggleSelectAll={handleToggleSelectAll}
+                  onView={handleViewEntity}
+                  onConfirmFaulty={handleConfirmFaulty}
+                  onMarkHealthy={handleMarkHealthy}
+                  onResolve={handleOpenResolveDialog}
+                  isLoading={isLoading}
+                />
+                <BulkActionsToolbar
+                  selectedCount={selectedIds.length}
+                  isLoading={actionLoading}
+                  onConfirmFaulty={() => updateSelectedStatus(FaultyEntityStatus.CONFIRMED_FAULTY, 'Bulk confirmed during investigation')}
+                  onMarkHealthy={() => updateSelectedStatus(FaultyEntityStatus.HEALTHY, 'Bulk marked healthy during investigation')}
+                  onSetUnderInspection={() => updateSelectedStatus(FaultyEntityStatus.UNDER_INSPECTION, 'Bulk set under inspection')}
+                  onResolve={() => updateSelectedStatus(FaultyEntityStatus.RESOLVED, 'Bulk resolved during investigation')}
+                  onRemoveFalsePositive={() => updateSelectedStatus(FaultyEntityStatus.FALSEPOSITIVE, 'Bulk marked false positive')}
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="timeline">
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">Review investigation actions and outcomes recorded against this case.</p>
+                <CaseTimeline events={timelineEventsView} isLoading={timelineLoading} />
+              </div>
+            </TabsContent>
         </Tabs>
       </div>
 
@@ -335,6 +490,16 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
         onOpenChange={setSheetOpen}
         onConfirmFaulty={() => activeEntity && handleConfirmFaulty(activeEntity)}
         onMarkHealthy={() => activeEntity && handleMarkHealthy(activeEntity)}
+        onResolve={() => activeEntity && handleOpenResolveDialog(activeEntity)}
+        onFaultTypeChange={(faultType) => activeEntity && handleFaultTypeChange(activeEntity.id, faultType)}
+      />
+
+      <ResolveFaultDialog
+        entity={resolveEntity}
+        open={resolveDialogOpen}
+        onOpenChange={setResolveDialogOpen}
+        onResolve={handleResolveFault}
+        isProcessing={resolveLoading}
       />
     </div>
   );

@@ -268,12 +268,24 @@ export enum CaseStatus {
 }
 
 export enum FaultType {
-  Electrical = 'electrical',
-  Mechanical = 'mechanical',
-  Software = 'software',
-  Environmental = 'environmental',
-  Other = 'other',
+  // Electrical = 'electrical',
+  // Mechanical = 'mechanical',
+  // Software = 'software',
+  // Environmental = 'environmental',
+  // Other = 'other',
+  HARDWARE             = "hardware",
+  SOFTWARE             = "software",
+  PHYSICAL_DAMAGE      = "physical_damage",
+  WEAR                 = "wear",
+  MANUFACTURING_DEFECT = "manufacturing_defect",
+  UNCLASSIFIED         = "unclassified",
+  ELECTRICAL           = 'electrical',
+  MECHANICAL           = 'mechanical',
+  ENVIRONMENTAL        = 'environmental',
+  OTHER                = 'other',
 }
+
+                
 
 export enum FaultyEntityStatus {
   IDENTIFIED       = "identified",
@@ -283,12 +295,12 @@ export enum FaultyEntityStatus {
   HEALTHY          = "healthy",
   RESOLVED         = "resolved",
   NO_FAULT_FOUND   = "no_fault_found",
-  FALSEPOSITIVE = 'false_positive'
+  FALSEPOSITIVE    = 'false_positive'
 }
 
 export enum ResolutionType {
-  REPAIRED = 'repair',
-  REPLACED = 'replacement',
+  REPAIRED = 'repaired',
+  REPLACED = 'replaced',
   NO_FAULT_FOUND   = "no_fault_found",
   DECOMMISSIONED = "decommissioned",
   CLEAR = 'clear',
@@ -296,11 +308,12 @@ export enum ResolutionType {
 
 export enum ActionType {
   Inspection = 'inspection',
-  Diagnosis = 'diagnosis',
+  Disassembly = 'disassembly',
   Repair = 'repair',
   Replacement = 'replacement',
-  Adjustment = 'adjustment',
   Testing = 'testing',
+  Cleaning = 'cleaning',
+  Recalibration = 'recalibration',
 }
 
 export enum ActionOutcome {
@@ -338,6 +351,7 @@ export interface MaintenanceCase {
   project_id: number;
   description: string;
   status: CaseStatus;
+  status_id?: number;
   entity_id: number;
   entity_type: EntityType;
   part_number:string;
@@ -359,9 +373,10 @@ export interface FaultyEntity {
 
   entity_type: EntityType;
   entity_id: number;
-  fault_type: FaultType;
+  fault_type?: FaultType;
   fault_description?: string;
   status: FaultyEntityStatus;
+  status_id?: number;
   resolution_type?: ResolutionType;
   identified_at: string;
   resolved_at?: string;
@@ -390,12 +405,15 @@ export interface MaintenanceAction {
   created_at: string;
   updated_at: string;
   faulty_entity?: FaultyEntity;
+  replacement_entity_type?: EntityType;
+  replacement_entity_id?: number;
 }
 
 // Maintenance Delivery
 export interface MaintenanceDelivery {
   id: number;
   case_id: number;
+  status_id?: number;
   delivery_type: DeliveryType;
   status: DeliveryStatus;
   delivered_at?: string;
@@ -415,6 +433,7 @@ export interface CreateMaintenanceCasePayload {
   part_number?:string;
 }
 
+
 export interface UpdateMaintenanceCasePayload {
   status?: CaseStatus;
   resolution_notes?: string;
@@ -430,6 +449,8 @@ export interface CreateFaultyEntityPayload {
 export interface UpdateFaultyEntityPayload {
   status?: FaultyEntityStatus;
   resolution_type?: ResolutionType;
+  fault_type?: FaultType;
+  part_number?: string;
 }
 
 export interface CreateMaintenanceActionPayload {
@@ -501,7 +522,8 @@ export interface lookUpResponse extends EntityLookupResponse {
 export interface SuspectChildrenPayload {
   entity_type: string;
   entity_id: number;
-  fault_type: string;
+  fault_type: FaultType;
+  entity_status: FaultyEntityStatus;
   fault_description?: string;
   entity_name: string;
   serial_number?: string;
@@ -536,4 +558,122 @@ export interface MaintenanceActionResponse {
 export interface MaintenanceDeliveryResponse {
   data: MaintenanceDelivery | MaintenanceDelivery[];
   error?: string;
+}
+
+
+export interface ConfigurationHistory {
+  id: number;
+
+  entity_id: number;
+  maintenance_case_id?: number | null;
+
+  performed_by: number;
+  approved_by?: number | null;
+  verified_by?: number | null;
+
+  change_date: string;
+  installation_date?: string | null;
+  removal_date?: string | null;
+
+  fault_type?: FaultType | null;
+  resolution_type: ResolutionType;
+
+  old_part_number?: string | null;
+  new_part_number?: string | null;
+
+  old_serial_number?: string | null;
+  new_serial_number?: string | null;
+
+  old_revision?: string | null;
+  new_revision?: string | null;
+
+  old_batch_number?: string | null;
+  new_batch_number?: string | null;
+
+  operating_hours?: number | null;
+  operating_cycles?: number | null;
+
+  work_order_number?: string | null;
+
+  reason?: string | null;
+  corrective_action?: string | null;
+  remarks?: string | null;
+
+  // Relationships
+  entity?: Entity;
+  maintenance_case?: MaintenanceCase | null;
+
+  performed_by_user?: User | null;
+  approved_by_user?: User | null;
+  verified_by_user?: User | null;
+}
+
+export interface CreateConfigurationHistoryPayload {
+  entity_id: number;
+  maintenance_case_id?: number;
+
+  performed_by: number;
+  approved_by?: number;
+  verified_by?: number;
+
+  installation_date?: string;
+  removal_date?: string;
+
+  fault_type?: FaultType;
+  resolution_type: ResolutionType;
+
+  old_part_number?: string;
+  new_part_number?: string;
+
+  old_serial_number?: string;
+  new_serial_number?: string;
+
+  old_revision?: string;
+  new_revision?: string;
+
+  old_batch_number?: string;
+  new_batch_number?: string;
+
+  operating_hours?: number;
+  operating_cycles?: number;
+
+  work_order_number?: string;
+
+  reason?: string;
+  corrective_action?: string;
+  remarks?: string;
+}
+
+export interface UpdateConfigurationHistoryPayload {
+  maintenance_case_id?: number;
+
+  approved_by?: number;
+  verified_by?: number;
+
+  installation_date?: string;
+  removal_date?: string;
+
+  fault_type?: FaultType;
+  resolution_type?: ResolutionType;
+
+  old_part_number?: string;
+  new_part_number?: string;
+
+  old_serial_number?: string;
+  new_serial_number?: string;
+
+  old_revision?: string;
+  new_revision?: string;
+
+  old_batch_number?: string;
+  new_batch_number?: string;
+
+  operating_hours?: number;
+  operating_cycles?: number;
+
+  work_order_number?: string;
+
+  reason?: string;
+  corrective_action?: string;
+  remarks?: string;
 }

@@ -96,7 +96,8 @@ export default function ProjectDetailPage() {
         part_number:formData.partnumber,
         serial_number: formData.name && formData.partnumber
                         ? `${formData.name}-${formData.partnumber}`
-                        : formData.name || formData.partnumber || ""
+                        : formData.name || formData.partnumber || "",
+        configuration_item: formData.partnumber || formData.name,
 
       });
       setIsAddOpen(false);
@@ -119,6 +120,27 @@ export default function ProjectDetailPage() {
     }
   }
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statusRes, hierarchyRes] = await Promise.all([
+          api.statuses.list('systems'),
+          api.hierarchies.list('system'),
+        ]);
+        setStatuses(statusRes.data);
+        setSystemHierarchyNames(hierarchyRes.data);
+      } catch (err) {
+        console.error('Failed to fetch statuses or hierarchy names', err);
+      } finally {
+        setLoadingStatuses(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -129,26 +151,6 @@ export default function ProjectDetailPage() {
       </div>
     );
   }
-
-  useEffect(() => {
-        const fetchData = async () => {
-          try {
-            const [statusRes, hierarchyRes] = await Promise.all([
-              api.statuses.list("systems"),
-              api.hierarchies.list("system"),
-            ]);
-            setStatuses(statusRes.data);
-            setSystemHierarchyNames(hierarchyRes.data);
-          } catch (err) {
-            console.error("Failed to fetch statuses or hierarchy names", err);
-          } finally {
-            setLoadingStatuses(false);
-          }
-        };
-  
-        fetchData();
-      }, []);
-    if (loading) return <div className="p-8 text-center">Loading...</div>;
 
   return (
     <div className="space-y-6">

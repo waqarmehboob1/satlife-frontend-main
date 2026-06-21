@@ -98,6 +98,40 @@ export default function SubsystemDetailPage() {
     }
   }
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statusRes, subsystemHierarchyRes] = await Promise.all([
+          api.statuses.list('modules'),
+          api.hierarchies.list('subsystem'),
+        ]);
+        setStatuses(statusRes.data);
+        setSubsystemHierarchyNames(subsystemHierarchyRes.data);
+
+        if (subsystem) {
+          const parentHierarchyId = subsystemHierarchyRes.data.find(
+            (hierarchy) => hierarchy.name === subsystem.name
+          )?.id;
+
+          if (parentHierarchyId) {
+            const childRes = await api.hierarchies.list('module', parentHierarchyId);
+            setModuleHierarchyNames(childRes.data);
+          } else {
+            setModuleHierarchyNames([]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch statuses or hierarchy names', err);
+      } finally {
+        setLoadingStatuses(false);
+      }
+    };
+
+    fetchData();
+  }, [subsystem]);
+
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+
   if (!subsystem) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -108,38 +142,6 @@ export default function SubsystemDetailPage() {
       </div>
     );
   }
- useEffect(() => {
-      const fetchData = async () => {
-        try {
-          const [statusRes, subsystemHierarchyRes] = await Promise.all([
-            api.statuses.list("modules"),
-            api.hierarchies.list("subsystem"),
-          ]);
-          setStatuses(statusRes.data);
-          setSubsystemHierarchyNames(subsystemHierarchyRes.data);
-
-          if (subsystem) {
-            const parentHierarchyId = subsystemHierarchyRes.data.find(
-              (hierarchy) => hierarchy.name === subsystem.name
-            )?.id;
-
-            if (parentHierarchyId) {
-              const childRes = await api.hierarchies.list("module", parentHierarchyId);
-              setModuleHierarchyNames(childRes.data);
-            } else {
-              setModuleHierarchyNames([]);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to fetch statuses or hierarchy names", err);
-        } finally {
-          setLoadingStatuses(false);
-        }
-      };
-
-      fetchData();
-    }, [subsystem]);
-  if (loading) return <div className="p-8 text-center">Loading...</div>;
 
   return (
     <div className="space-y-6">

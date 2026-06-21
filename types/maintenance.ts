@@ -34,11 +34,12 @@ export enum ResolutionType {
 
 export enum ActionType {
   Inspection = 'inspection',
-  Diagnosis = 'diagnosis',
+  Disassembly = 'disassembly',
   Repair = 'repair',
   Replacement = 'replacement',
-  Adjustment = 'adjustment',
   Testing = 'testing',
+  Cleaning = 'cleaning',
+  Recalibration = 'recalibration',
 }
 
 export enum ActionOutcome {

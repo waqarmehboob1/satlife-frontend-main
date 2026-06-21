@@ -7,7 +7,7 @@ import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { EntityLookupNode } from '@/lib/models';
+import { EntityLookupNode, FaultType, FaultyEntityStatus } from '@/lib/models';
 import {
   Select,
   SelectContent,
@@ -23,6 +23,7 @@ import { MaintenanceMiniDashboard } from '@/components/maintenance/MaintenanceMi
 import { MaintenanceLookupDialog } from '@/components/maintenance/MaintenanceLookupDialog';
 import { MaintenanceCaseDialog } from '@/components/maintenance/MaintenanceCaseDialog';
 import { MaintenanceTable } from '@/components/maintenance/MaintenanceTable';
+import { loadAllPartNumbers } from '@/lib/part-numbers';
 
 export default function MaintenancePage() {
   const router = useRouter();
@@ -53,8 +54,12 @@ export default function MaintenancePage() {
   useEffect(() => {
     loadMaintenanceCases();
     loadPartNumber();
-
   }, []);
+
+  useEffect(() => {
+    if (!isLookupOpen) return;
+    loadPartNumber();
+  }, [isLookupOpen]);
 
   const loadMaintenanceCases = async () => {
     try {
@@ -73,17 +78,11 @@ export default function MaintenancePage() {
 
   const loadPartNumber = async () => {
     try {
-      setIsLoadingData(true);
-      const res = await maintenanceApi.entities.partNumber();
-      setPartNumbers(res.data)
-      console.log('Loaded PartNumbers:', res.data);
-      // Note: This data would typically be managed by the data store
-      // For now, we're managing it locally in the component
+      const allPartNumbers = await loadAllPartNumbers();
+      setPartNumbers(allPartNumbers);
     } catch (err) {
       console.error('Failed to load PartNumbers:', err);
       toast.error('Failed to load PartNumbers');
-    } finally {
-      setIsLoadingData(false);
     }
   };
 
@@ -186,7 +185,8 @@ export default function MaintenancePage() {
       await suspectChildren(lookupCaseId, {
         entity_type: lookupResponses.matched_entity_type.toLowerCase(),
         entity_id: lookupResponses.matched_entity_id,
-        fault_type: "suspected",
+        fault_type: FaultType.UNCLASSIFIED,
+        entity_status: FaultyEntityStatus.SUSPECTED,
         fault_description: `Suspected issue on ${lookupResponses.matched_label}`,
         entity_name: lookupResponses.matched_label,
         serial_number: lookupResponses.matched_entity_serialNumber,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import Link from 'next/link';
 import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
+import { getUnitCountByModuleId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 const MODULE_STATUSES = {
   'Design': { icon: Clock, color: 'text-blue-500' },
@@ -28,7 +30,7 @@ const MODULE_STATUSES = {
 export default function ModulesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { modules, subsystems, loading, createModule, updateModule, deleteModule } = useDataStore();
+  const { modules, subsystems, units, loading, createModule, updateModule, deleteModule } = useDataStore();
   const [search, setSearch] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -84,6 +86,11 @@ export default function ModulesPage() {
 
     fetchModuleNames();
   }, [formData.subsystem_id, subsystemHierarchyNames, subsystems]);
+
+  const unitCountByModule = useMemo(
+    () => getUnitCountByModuleId(units),
+    [units]
+  );
 
   const filtered = modules.filter((m) => {
     const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -312,13 +319,14 @@ export default function ModulesPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Subsystem</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Units</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No modules found
                     </TableCell>
                   </TableRow>
@@ -331,6 +339,12 @@ export default function ModulesPage() {
                         <TableCell>{subsystem?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={module.status?.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(unitCountByModule, module.id)}
+                            label="Total units"
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">

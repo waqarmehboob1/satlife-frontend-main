@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import Link from 'next/link';
 import * as api from '@/lib/api';
 import type { Hierarchy } from '@/lib/models';
+import { getInventoryQuantityByComponentId, getCount } from '@/lib/entity-counts';
+import { EntityCountCell } from '@/components/entity-count-cell';
 
 const COMPONENT_STATUSES = {
   'Procured': { icon: Clock, color: 'text-blue-500' },
@@ -28,7 +30,7 @@ const COMPONENT_STATUSES = {
 export default function ComponentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { components, units, loading, createComponent, updateComponent, deleteComponent } = useDataStore();
+  const { components, units, inventory, loading, createComponent, updateComponent, deleteComponent } = useDataStore();
   const statusFilterParam = searchParams.get('status');
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'all');
   const [search, setSearch] = useState('');
@@ -83,6 +85,11 @@ export default function ComponentsPage() {
 
     fetchComponentNames();
   }, [formData.unit_id, unitHierarchyNames, units]);
+
+  const inventoryQtyByComponent = useMemo(
+    () => getInventoryQuantityByComponentId(inventory),
+    [inventory]
+  );
 
   const filtered = components.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -311,13 +318,14 @@ export default function ComponentsPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Inventory Qty</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       No components found
                     </TableCell>
                   </TableRow>
@@ -330,6 +338,12 @@ export default function ComponentsPage() {
                         <TableCell>{unit?.name || 'N/A'}</TableCell>
                         <TableCell>
                           <StatusBadge status={component.status?.status_name || 'Unknown'} />
+                        </TableCell>
+                        <TableCell>
+                          <EntityCountCell
+                            count={getCount(inventoryQtyByComponent, component.id)}
+                            label="Inventory quantity"
+                          />
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">

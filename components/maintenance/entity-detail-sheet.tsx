@@ -1,10 +1,17 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { EntityStatusBadge } from './entity-status-badge';
-import type { FaultyEntity } from '@/lib/models';
+import { FaultyEntityStatus, FaultType, type FaultyEntity } from '@/lib/models';
 
 interface EntityDetailSheetProps {
   entity: FaultyEntity | null;
@@ -12,6 +19,8 @@ interface EntityDetailSheetProps {
   onOpenChange: (open: boolean) => void;
   onConfirmFaulty?: () => void;
   onMarkHealthy?: () => void;
+  onFaultTypeChange?: (faultType: string) => void;
+  onResolve?: () => void;
 }
 
 export function EntityDetailSheet({
@@ -20,12 +29,28 @@ export function EntityDetailSheet({
   onOpenChange,
   onConfirmFaulty,
   onMarkHealthy,
+  onFaultTypeChange,
+  onResolve,
 }: EntityDetailSheetProps) {
+  const [selectedFaultType, setSelectedFaultType] = useState<string>('');
+
+  useEffect(() => {
+    if (entity?.fault_type) {
+      setSelectedFaultType(entity.fault_type);
+    } else {
+      setSelectedFaultType('');
+    }
+  }, [entity?.id, entity?.fault_type]);
+
+  const handleFaultTypeChange = (value: string) => {
+    setSelectedFaultType(value);
+    onFaultTypeChange?.(value);
+  };
+
   const details = useMemo(
     () => [
       { label: 'Part Number', value: entity?.part_number || 'N/A', flag_color: " bg-amber-500 " },
       { label: 'Serial Number', value: entity?.serial_number || 'N/A', flag_color: "bg-blue-500 "  },
-      { label: 'Fault Type', value: entity?.fault_type || 'Unknown', flag_color: "bg-emerald-300 "  },
       { label: 'Status', value: entity?.status || 'unknown', flag_color: "bg-yellow-800"  },
       { label: 'Identified At', value: entity?.identified_at ? new Date(entity.identified_at).toLocaleString() : 'Unknown', flag_color: " bg-cyan-300"  },
     ],
@@ -67,6 +92,29 @@ export function EntityDetailSheet({
                   </div>
                 ))}
               </div>
+
+              {entity.status === FaultyEntityStatus.CONFIRMED_FAULTY && (
+                <div className="mt-6 flex flex-col gap-2">
+                  <label className="text-xs font-light uppercase text-muted-foreground">Fault Type</label>
+                  <Select value={selectedFaultType} onValueChange={handleFaultTypeChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select fault type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={FaultType.ELECTRICAL}>Electrical</SelectItem>
+                      <SelectItem value={FaultType.MECHANICAL}>Mechanical</SelectItem>
+                      <SelectItem value={FaultType.SOFTWARE}>Software</SelectItem>
+                      <SelectItem value={FaultType.ENVIRONMENTAL}>Environmental</SelectItem>
+                      <SelectItem value={FaultType.HARDWARE}>Hardware</SelectItem>
+                      <SelectItem value={FaultType.MANUFACTURING_DEFECT}>Manufacturing Defect</SelectItem>
+                      <SelectItem value={FaultType.PHYSICAL_DAMAGE}>Physical Damage</SelectItem>
+                      <SelectItem value={FaultType.UNCLASSIFIED}>Unclassified</SelectItem>
+                      <SelectItem value={FaultType.WEAR}>Wear</SelectItem>
+                      <SelectItem value={FaultType.OTHER}>Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -76,8 +124,11 @@ export function EntityDetailSheet({
               <Button variant="secondary" onClick={onMarkHealthy} disabled={!entity || entity.status === 'healthy'}>
                 Mark Healthy
               </Button>
-              
-              <Button variant="secondary" onClick={onMarkHealthy} disabled={!entity || entity.status === 'healthy'}>
+              <Button
+                variant="default"
+                onClick={onResolve}
+                disabled={!entity || entity.status === FaultyEntityStatus.RESOLVED}
+              >
                 Resolve
               </Button>
             </div>

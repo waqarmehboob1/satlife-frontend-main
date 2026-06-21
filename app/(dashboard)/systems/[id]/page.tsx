@@ -13,13 +13,16 @@ import { EntityCards } from '@/components/entity-cards';
 import { EntityForm } from '@/components/entity-form';
 import { useState,useEffect } from 'react';
 import { toast } from 'sonner';
+import axios from 'axios';
 import * as api from '@/lib/api';
+import { fetchStatusesByType } from '@/lib/api';
 import * as Models from '@/lib/models';
+import { resolveStatusName } from '@/lib/entity-status';
 
 export default function SystemDetailPage() {
   const params = useParams();
   const systemId = params.id as string;
-  const { systems, projects,loading, subsystems, createSubsystem, deleteSubsystem } = useDataStore();
+  const { systems, projects,loading, subsystems, createSubsystem, deleteSubsystem, statuses: storeStatuses } = useDataStore();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -74,16 +77,27 @@ export default function SystemDetailPage() {
         description: formData.description || '',
         system_id: system.id,
         status_id: Number(formData.id),
-        part_number:formData.partnumber,
+        part_number: formData.partnumber,
         serial_number: formData.name && formData.partnumber
                         ? `${formData.name}-${formData.partnumber}`
-                        : formData.name || formData.partnumber || ""
+                        : formData.name || formData.partnumber || "",
+        configuration_item: formData.partnumber || formData.name,
       });
       setIsAddOpen(false);
       toast.success('Subsystem added successfully');
     } catch (error) {
       console.error('[v0] Subsystem creation error:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to add subsystem';
+      let errorMessage = 'Failed to add subsystem';
+      if (axios.isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (Array.isArray(detail)) {
+          errorMessage = detail.map((item) => item.msg || JSON.stringify(item)).join(', ');
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -99,6 +113,51 @@ export default function SystemDetailPage() {
     }
   }
 
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [statusResult, hierarchyResult] = await Promise.allSettled([
+          fetchStatusesByType('subsystems'),
+          api.hierarchies.list('system'),
+        ]);
+
+        if (statusResult.status === 'fulfilled') {
+          setStatuses(statusResult.value);
+        }
+
+        if (hierarchyResult.status === 'fulfilled') {
+          setSystemHierarchyNames(hierarchyResult.value.data);
+
+          if (system) {
+            const parentHierarchyId = hierarchyResult.value.data.find(
+              (hierarchy) => hierarchy.name === system.name
+            )?.id;
+
+            if (parentHierarchyId) {
+              try {
+                const childRes = await api.hierarchies.list('subsystem', parentHierarchyId);
+                setSubsystemHierarchyNames(childRes.data);
+              } catch (childError) {
+                console.error('Failed to fetch subsystem hierarchy names', childError);
+                setSubsystemHierarchyNames([]);
+              }
+            } else {
+              setSubsystemHierarchyNames([]);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch statuses or hierarchy names', err);
+      } finally {
+        setLoadingStatuses(false);
+      }
+    };
+
+    fetchData();
+  }, [system]);
+
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+
   if (!system) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -109,39 +168,6 @@ export default function SystemDetailPage() {
       </div>
     );
   }
-  useEffect(() => {
-      const fetchData = async () => {
-        try {
-          const [statusRes, systemHierarchyRes] = await Promise.all([
-            api.statuses.list("subsystems"),
-            api.hierarchies.list("system"),
-          ]);
-
-          setStatuses(statusRes.data);
-          setSystemHierarchyNames(systemHierarchyRes.data);
-
-          if (system) {
-            const parentHierarchyId = systemHierarchyRes.data.find(
-              (hierarchy) => hierarchy.name === system.name
-            )?.id;
-
-            if (parentHierarchyId) {
-              const childRes = await api.hierarchies.list("subsystem", parentHierarchyId);
-              setSubsystemHierarchyNames(childRes.data);
-            } else {
-              setSubsystemHierarchyNames([]);
-            }
-          }
-        } catch (err) {
-          console.error("Failed to fetch statuses or hierarchy names", err);
-        } finally {
-          setLoadingStatuses(false);
-        }
-      };
-
-      fetchData();
-    }, [system]);
-  if (loading) return <div className="p-8 text-center">Loading...</div>;
 
   return (
     <div className="space-y-6">
@@ -191,7 +217,7 @@ export default function SystemDetailPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Status</p>
-              <StatusBadge status={system.status?.status_name || 'Unknown'} />
+              <StatusBadge status={resolveStatusName(system, storeStatuses.length ? storeStatuses : statuses)} />
             </div>
           </CardContent>
         </Card>
@@ -213,6 +239,7 @@ export default function SystemDetailPage() {
         title="Subsystems"
         description={`Manage subsystems for ${system.name}`}
         entities={systemSubsystems}
+        statuses={storeStatuses.length ? storeStatuses : statuses}
         onAdd={() => setIsAddOpen(true)}
         onDelete={handleDeleteSubsystem}
         detailPath={(id) => `/subsystems/${id}`}

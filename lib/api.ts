@@ -3,6 +3,18 @@ import type * as Models from "./models";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
 
+export function buildQueryParams(
+  params: Record<string, string | number | undefined | null>
+) {
+  const cleaned = Object.fromEntries(
+    Object.entries(params).filter(
+      ([, value]) => value !== undefined && value !== null && value !== ''
+    )
+  ) as Record<string, string | number>;
+
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
 const api = axios.create({
   baseURL: API_BASE,
 });
@@ -16,6 +28,18 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+export async function fetchStatusesByType(statusType: string): Promise<Models.Status[]> {
+  try {
+    const res = await api.get<Models.Status[]>('/statuses/', {
+      params: buildQueryParams({ status_type: statusType }),
+    });
+    return res.data;
+  } catch {
+    const res = await api.get<Models.Status[]>('/statuses/');
+    return res.data.filter((status) => status.status_type === statusType);
+  }
+}
 
 // Authentication
 export const auth = {
@@ -123,7 +147,7 @@ export const components = {
 export const hierarchies = {
   list: (hierarchy_type?: string, parent_id?: number) =>
     api.get<Models.Hierarchy[]>("/hierarchies/", {
-      params: { hierarchy_type, parent_id },
+      params: buildQueryParams({ hierarchy_type, parent_id }),
     }),
   get: (id: number) => api.get<Models.Hierarchy>(`/hierarchies/${id}/`),
   create: (data: Partial<Models.Hierarchy>) => api.post<Models.Hierarchy>("/hierarchies/", data),
@@ -144,7 +168,7 @@ export const inventory = {
 export const statuses = {
   list: (status_type?: string) =>
     api.get<Models.Status[]>("/statuses/", {
-      params: { status_type },
+      params: buildQueryParams({ status_type }),
     }),
   get: (id: number) => api.get<Models.Status>(`/statuses/${id}/`),
   create: (data: Partial<Models.Status>) => api.post<Models.Status>("/statuses/", data),
@@ -157,7 +181,7 @@ export const entities = {
   list: (skip = 0, limit = 100) => api.get<Models.Entity[]>("/entities/", { params: { skip, limit } }),
   get: (id: number) => api.get<Models.Entity>(`/entities/${id}/`),
   getStatusHistory: (id: number) => api.get<Models.EntityStatusHistory[]>(`/entities/${id}/status-history/`),
-  getMaintenanceLogs: (id: number) => api.get<Models.MaintenanceLog[]>(`/entities/${id}/maintenanceLogs-logs/`),
+  getMaintenanceLogs: (id: number) => api.get<Models.MaintenanceLog[]>(`/entities/${id}/maintenance-logs/`),
   partNumber: () => api.get<string[]>("/part-numbers/"),
 };
 
@@ -171,11 +195,14 @@ export const entityStatusHistory = {
 
 // maintenanceLogs Logs
 export const maintenanceLogs = {
-  list: (skip = 0, limit = 100) => api.get<Models.MaintenanceLog[]>('/maintenanceLogs-logs/', { params: { skip, limit } }),
-  get: (id: number) => api.get<Models.MaintenanceLog>(`/maintenanceLogs-logs/${id}/`),
-  create: (data: Partial<Models.MaintenanceLog>) => api.post<Models.MaintenanceLog>('/maintenanceLogs-logs/', data),
-  update: (id: number, data: Partial<Models.MaintenanceLog>) => api.put<Models.MaintenanceLog>(`/maintenanceLogs-logs/${id}/`, data),
-  delete: (id: number) => api.delete(`/maintenanceLogs-logs/${id}/`),
+  list: (skip?: number, limit?: number) =>
+    api.get<Models.MaintenanceLog[]>('/maintenance-logs/', {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  get: (id: number) => api.get<Models.MaintenanceLog>(`/maintenance-logs/${id}/`),
+  create: (data: Partial<Models.MaintenanceLog>) => api.post<Models.MaintenanceLog>('/maintenance-logs/', data),
+  update: (id: number, data: Partial<Models.MaintenanceLog>) => api.put<Models.MaintenanceLog>(`/maintenance-logs/${id}/`, data),
+  delete: (id: number) => api.delete(`/maintenance-logs/${id}/`),
 };
 
 // Maintenance Cases
@@ -196,17 +223,23 @@ export const faultyEntities = {
   listByCaseId: (caseId: number, skip = 0, limit = 100) => api.get<Models.FaultyEntity[]>(`/maintenance-cases/${caseId}/faulty-entities/`, { params: { skip, limit } }),
   get: (id: number) =>    api.get<Models.FaultyEntity>(`/faulty-entities/${id}/`),
   create: (data: Models.CreateFaultyEntityPayload) =>    api.post<Models.FaultyEntity>('/faulty-entities/', data),
-  update: (id: number, data: Models.UpdateFaultyEntityPayload) =>    api.put<Models.FaultyEntity>(`/faulty-entities/${id}/`, data),
-  updateChildren: (id: number, data: Models.UpdateFaultyEntityPayload) =>    api.put<Models.FaultyEntity>(`/faulty-entities-Children/${id}/`, data),
+  update: (id: number, data: Models.UpdateFaultyEntityPayload) => api.put<Models.FaultyEntity>(`/faulty-entities/${id}/`, data),
+  updateChildren: (id: number, data: Models.UpdateFaultyEntityPayload) => api.put<Models.FaultyEntity>(`/faulty-entities-Children/${id}/`, data),
   delete: (id: number) =>    api.delete(`/faulty-entities/${id}/`),
-  cascadeFault: (entityId: number, faultType: string) =>    api.post(`/faulty-entities/${entityId}/cascade-fault/`, { fault_type: faultType }),
-  getMaintenanceHistory: (entityId: number) =>    api.get<Models.MaintenanceAction[]>(`/faulty-entities/${entityId}/history/`),
+  cascadeFault: (entityId: number, faultType: string) =>    api.post(`/faulty-entities/${entityId}/cascade-fault/`, {fault_type: faultType }),
+  getMaintenanceHistory: (entityId: number) => api.get<Models.MaintenanceAction[]>(`/faulty-entities/${entityId}/history/`),
 };
 
 // Maintenance Actions
 export const maintenanceActions = {
-  list: (skip = 0, limit = 100) =>    api.get<Models.MaintenanceAction[]>('/maintenance-actions/', { params: { skip, limit } }),
-  listByFaultyEntityId: (faultyEntityId: number, skip = 0, limit = 100) =>    api.get<Models.MaintenanceAction[]>(`/faulty-entities/${faultyEntityId}/actions/`, { params: { skip, limit } }),
+  list: (skip?: number, limit?: number) =>
+    api.get<Models.MaintenanceAction[]>('/maintenance-actions/', {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  listByFaultyEntityId: (faultyEntityId: number, skip?: number, limit?: number) =>
+    api.get<Models.MaintenanceAction[]>(`/faulty-entities/${faultyEntityId}/actions/`, {
+      params: buildQueryParams({ skip, limit }),
+    }),
   get: (id: number) =>    api.get<Models.MaintenanceAction>(`/maintenance-actions/${id}/`),
   create: (data: Models.CreateMaintenanceActionPayload) =>    api.post<Models.MaintenanceAction>('/maintenance-actions/', data),
   update: (id: number, data: Models.UpdateMaintenanceActionPayload) =>    api.put<Models.MaintenanceAction>(`/maintenance-actions/${id}/`, data),
@@ -215,13 +248,40 @@ export const maintenanceActions = {
 
 // Maintenance Deliveries
 export const maintenanceDeliveries = {
-  list: (skip = 0, limit = 100) =>    api.get<Models.MaintenanceDelivery[]>('/maintenance-deliveries/', { params: { skip, limit } }),
-  listByCaseId: (caseId: number, skip = 0, limit = 100) =>    api.get<Models.MaintenanceDelivery[]>(`/maintenance-cases/${caseId}/deliveries/`, { params: { skip, limit } }),
+  list: (skip?: number, limit?: number) =>
+    api.get<Models.MaintenanceDelivery[]>('/maintenance-deliveries/', {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  listByCaseId: (caseId: number, skip?: number, limit?: number) =>
+    api.get<Models.MaintenanceDelivery[]>(`/maintenance-cases/${caseId}/deliveries/`, {
+      params: buildQueryParams({ skip, limit }),
+    }),
   get: (id: number) =>    api.get<Models.MaintenanceDelivery>(`/maintenance-deliveries/${id}/`),
   create: (data: Models.CreateMaintenanceDeliveryPayload) =>    api.post<Models.MaintenanceDelivery>('/maintenance-deliveries/', data),
   update: (id: number, data: Models.UpdateMaintenanceDeliveryPayload) =>    api.put<Models.MaintenanceDelivery>(`/maintenance-deliveries/${id}/`, data),
   confirm: (id: number, receivedBy: string) =>    api.post(`/maintenance-deliveries/${id}/confirm/`, { received_by: receivedBy }),
   delete: (id: number) =>    api.delete(`/maintenance-deliveries/${id}/`),
+};
+
+// Configurations History
+export const configurationHistory = {
+  confirm: (id: number, receivedBy: string) =>    api.post(`/configuration_history/${id}/confirm/`, { received_by: receivedBy }),
+  delete: (id: number) =>    api.delete(`/configuration_history/${id}/`),
+  list: (skip?: number, limit?: number) =>
+    api.get<Models.ConfigurationHistory[]>('/configuration_history_list/', {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  get: (id: number) =>    api.get<Models.ConfigurationHistory>(`/configuration_history/${id}/`),
+  listByCaseId: (caseId: number, skip?: number, limit?: number) =>
+    api.get<Models.ConfigurationHistory[]>(`/configuration_history_list/${caseId}/caseID/`, {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  listByEntityID: (entityId: number, skip?: number, limit?: number) =>
+    api.get<Models.ConfigurationHistory[]>(`/configuration_history_list/${entityId}/EntityID/`, {
+      params: buildQueryParams({ skip, limit }),
+    }),
+  create: (data: Models.CreateConfigurationHistoryPayload) =>    api.post<Models.ConfigurationHistory>('/configuration_history/', data),
+  update: (id: number, data: Models.UpdateConfigurationHistoryPayload) =>    api.put<Models.ConfigurationHistory>(`/configuration_history/${id}/`, data),
 };
 
 export default api;
