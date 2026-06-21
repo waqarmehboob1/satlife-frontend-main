@@ -110,6 +110,7 @@ export interface Project {
   owner_id: number
   order_id: number
   status_id: number
+  progress?: number
   created_at: string
   updated_at: string
   owner?: User
@@ -357,7 +358,7 @@ export interface MaintenanceCase {
   part_number:string;
   reported_at: string;
   reported_by?: string;
-  reported_by_user?: string;
+  reported_by_user?: string | User;
   resolved_at?: string;
   resolution_notes?: string;
   created_at: string;

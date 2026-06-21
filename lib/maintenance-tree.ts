@@ -1,4 +1,5 @@
 import type { FaultyEntity } from '@/lib/models';
+import { FaultyEntityStatus } from '@/lib/models';
 
 export interface InvestigationTreeNode {
   id: number;
@@ -9,6 +10,27 @@ export interface InvestigationTreeNode {
   entity_type?: string;
   children: InvestigationTreeNode[];
 }
+
+export interface TreeVisualContext {
+  redPingIds: Set<number>;
+  amberPingIds: Set<number>;
+  spinIds: Set<number>;
+}
+
+const TERMINAL_STATUSES = new Set<string>([
+  FaultyEntityStatus.HEALTHY,
+  FaultyEntityStatus.RESOLVED,
+  FaultyEntityStatus.NO_FAULT_FOUND,
+  FaultyEntityStatus.FALSEPOSITIVE,
+]);
+
+const FAULT_SOURCE_STATUSES = new Set<string>([
+  FaultyEntityStatus.IDENTIFIED,
+  FaultyEntityStatus.CONFIRMED_FAULTY,
+  FaultyEntityStatus.UNDER_INSPECTION,
+]);
+
+const RESOLVED_CASE_STATUSES = new Set(['resolved', 'closed']);
 
 function toTreeNode(entity: FaultyEntity): InvestigationTreeNode {
   return {
@@ -77,4 +99,65 @@ export function buildInvestigationTree(entities: FaultyEntity[]): InvestigationT
 
   sortTreeNodes(roots);
   return roots;
+}
+
+function walkTree(
+  nodes: InvestigationTreeNode[],
+  parentId: number | null,
+  nodeMap: Map<number, InvestigationTreeNode>,
+  parentMap: Map<number, number>
+) {
+  for (const node of nodes) {
+    nodeMap.set(node.id, node);
+    if (parentId != null) parentMap.set(node.id, parentId);
+    if (node.children.length) walkTree(node.children, node.id, nodeMap, parentMap);
+  }
+}
+
+function collectDescendantIds(node: InvestigationTreeNode): number[] {
+  return node.children.flatMap((child) => [child.id, ...collectDescendantIds(child)]);
+}
+
+function collectAncestorIds(nodeId: number, parentMap: Map<number, number>): number[] {
+  const ancestors: number[] = [];
+  let current = parentMap.get(nodeId);
+  while (current != null) {
+    ancestors.push(current);
+    current = parentMap.get(current);
+  }
+  return ancestors;
+}
+
+export function buildTreeVisualContext(
+  nodes: InvestigationTreeNode[],
+  caseStatus?: string
+): TreeVisualContext {
+  const redPingIds = new Set<number>();
+  const amberPingIds = new Set<number>();
+  const spinIds = new Set<number>();
+
+  if (caseStatus && RESOLVED_CASE_STATUSES.has(caseStatus)) {
+    return { redPingIds, amberPingIds, spinIds };
+  }
+
+  const nodeMap = new Map<number, InvestigationTreeNode>();
+  const parentMap = new Map<number, number>();
+  walkTree(nodes, null, nodeMap, parentMap);
+
+  for (const [nodeId, node] of nodeMap) {
+    if (TERMINAL_STATUSES.has(node.status)) continue;
+    if (!FAULT_SOURCE_STATUSES.has(node.status)) continue;
+
+    redPingIds.add(nodeId);
+    collectAncestorIds(nodeId, parentMap).forEach((id) => spinIds.add(id));
+
+    const descendants = collectDescendantIds(node);
+    for (const descId of descendants) {
+      const desc = nodeMap.get(descId);
+      if (!desc || TERMINAL_STATUSES.has(desc.status)) continue;
+      amberPingIds.add(descId);
+    }
+  }
+
+  return { redPingIds, amberPingIds, spinIds };
 }

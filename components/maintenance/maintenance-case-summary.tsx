@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { KPICard } from '@/components/kpi-card';
 import { EntityStatusBadge } from './entity-status-badge';
 import type { MaintenanceCase } from '@/lib/models';
+import { formatUserRef } from '@/lib/user-display';
 
 interface MaintenanceCaseSummaryProps {
   maintenanceCase: MaintenanceCase;
@@ -41,7 +42,7 @@ export function MaintenanceCaseSummary({ maintenanceCase, projectName, counts }:
           </div>
           <div className="space-y-1 rounded-lg border border-border  p-4">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Reported By</p>
-            <p className="font-semibold">{maintenanceCase.reported_by_user || 'Unknown'}</p>
+            <p className="font-semibold">{formatUserRef(maintenanceCase.reported_by_user)}</p>
           </div>
         </div>
         <div className='flex justify-between'>   

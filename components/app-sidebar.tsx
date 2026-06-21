@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  BarChart3,
   Users,
   ShoppingCart,
   Rocket,
@@ -43,6 +44,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Executive Dashboard", href: "/executive-dashboard", icon: BarChart3 },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Orders", href: "/orders", icon: ShoppingCart },
   { label: "Projects", href: "/projects", icon: Rocket },

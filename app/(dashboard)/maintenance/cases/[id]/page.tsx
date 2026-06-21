@@ -435,6 +435,7 @@ export default function MaintenanceCaseInvestigationPage({ params }: { params: P
                 </p>
                 <InvestigationTree
                   nodes={treeNodes}
+                  caseStatus={maintenanceCase?.status}
                   onSelect={(node) => {
                     const selected = entities.find((entity) => entity.id === node.id);
                     if (selected) {

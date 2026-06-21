@@ -10,15 +10,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash2, Search, Clock, AlertTriangle, Zap, Pause, CheckCircle,Sigma , Presentation, Asterisk, AlertCircle, CheckCircle2, Wrench, Package, Lock, type LucideIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Clock, AlertTriangle, Zap, Pause, CheckCircle,Sigma , Presentation, type LucideIcon, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/status-badge';
 import * as api from '@/lib/api';
 import * as Models from '@/lib/models';
-import Link from 'next/link';
 import { KPICard } from '@/components/kpi-card';
 import { getSystemCountByProjectId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { Progress } from '@/components/ui/progress';
+import { ProjectProgressDialog } from '@/components/projects/project-progress-dialog';
 
 interface StatusCount {
   status: string;
@@ -39,6 +40,8 @@ export default function ProjectsPage(){
   const [statusFilter, setStatusFilter] = useState<string>(statusFilterParam || 'Total');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isProgressOpen, setIsProgressOpen] = useState(false);
+  const [progressProject, setProgressProject] = useState<Models.Project | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -161,6 +164,18 @@ export default function ProjectsPage(){
     } catch {
       // Error handled by DataStore
     }
+  }
+
+  function openProgressEdit(project: Models.Project) {
+    setProgressProject(project);
+    setIsProgressOpen(true);
+  }
+
+  async function handleProgressSave(
+    projectId: number,
+    data: { progress: number; status_id?: number }
+  ) {
+    await updateProject(projectId, data);
   }
 
   function openEdit(project: typeof projects[0]) {
@@ -434,17 +449,43 @@ export default function ProjectsPage(){
                             label="Total systems"
                           />
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground ">10%</TableCell>
+                        <TableCell
+                          className="min-w-[140px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProgressEdit(project);
+                          }}
+                        >
+                          <div className="flex cursor-pointer items-center gap-2 rounded-md p-1 hover:bg-muted/50">
+                            <Progress value={project.progress ?? 0} className="h-2 flex-1" />
+                            <span className="w-10 text-right text-xs font-medium tabular-nums">
+                              {project.progress ?? 0}%
+                            </span>
+                            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
-                            
-                              <Edit className="h-4 w-4 text-accent-foreground hover:text-blue-600" 
-                                onClick={(e) => { e.stopPropagation()
-                                openEdit(project)}}
-                                />
-
-                              <Trash2 className="h-4 w-4 text-accent-foreground hover:text-red-600" 
-                              onClick={(e) => { e.stopPropagation();handleDelete(project.id)}}/>
+                            <button
+                              type="button"
+                              className="rounded p-1 hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEdit(project);
+                              }}
+                            >
+                              <Edit className="h-4 w-4 text-accent-foreground hover:text-blue-600" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-1 hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(project.id);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-accent-foreground hover:text-red-600" />
+                            </button>
                           </div>
                         </TableCell>
                         {/* <Link href={`/projects/${project.id}`} className="absolute inset-0" /> */}
@@ -457,6 +498,14 @@ export default function ProjectsPage(){
           </div>
         </CardContent>
       </Card>
+
+      <ProjectProgressDialog
+        open={isProgressOpen}
+        onOpenChange={setIsProgressOpen}
+        project={progressProject}
+        statuses={statuses}
+        onSave={handleProgressSave}
+      />
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent>
