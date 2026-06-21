@@ -59,7 +59,7 @@ export const auth = {
 // Users
 export const users = {
   list: (skip = 0, limit = 100) => api.get<Models.User[]>("/users/", { params: { skip, limit } }),
-  usersWithRoles: () => api.get("/users/with-roles"),
+  usersWithRoles: () => api.get("/users/with-roles/"),
   get: (id: number) => api.get<Models.User>(`/users/${id}/`),
   create: (data: Partial<Models.User>) => api.post<Models.User>("/users/", data),
   update: (id: number, data: Partial<Models.User>) => api.put<Models.User>(`/users/${id}/`, data),
