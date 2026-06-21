@@ -21,6 +21,7 @@ import * as Models from '@/lib/models';
 import * as api from '@/lib/api';
 import { getOrderCountByCustomerId, getProjectCountByCustomerId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
+import { CustomersListDashboard } from '@/components/customers/customers-list-dashboard';
 
 const emptyCustomerForm: CustomerForm = {
   customer_code: '',
@@ -47,6 +48,7 @@ type CustomerForm = {
 export default function CustomersPage() {
   const { customers, orders, projects, loading, createCustomer, updateCustomer, deleteCustomer } = useDataStore();
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingId, setEditingId] = useState<number| null>(null);
@@ -83,15 +85,25 @@ export default function CustomersPage() {
 
   const filtered = customers.filter((c) => {
     const term = search.toLowerCase();
-
-    return (
+    const matchesSearch =
+      !term ||
       c.customer_code?.toLowerCase().includes(term) ||
       c.name.toLowerCase().includes(term) ||
       c.primary_contact_name?.toLowerCase().includes(term) ||
       c.email?.toLowerCase().includes(term) ||
-      c.phone?.toLowerCase().includes(term)
-    );
+      c.phone?.toLowerCase().includes(term);
+    const matchesStatus =
+      statusFilter === 'all' || c.status_id?.toString() === statusFilter;
+    return matchesSearch && matchesStatus;
   });
+
+  const filteredStatusLabel = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? null
+        : statuses.find((s) => String(s.id) === statusFilter)?.status_name,
+    [statusFilter, statuses]
+  );
   async function handleCreate() {
    if (!formData.name.trim() || !formData.status_id) {
       toast.error('Please fill in all required fields');
@@ -206,6 +218,26 @@ export default function CustomersPage() {
         <p className="text-muted-foreground mt-2">Manage your customer list</p>
       </div>
 
+      <CustomersListDashboard
+        customers={customers}
+        orders={orders}
+        projects={projects}
+        customerStatuses={statuses}
+        activeStatusId={statusFilter}
+        onStatusFilter={setStatusFilter}
+      />
+
+      {statusFilter !== 'all' && filteredStatusLabel && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+            Status: <strong>{filteredStatusLabel}</strong>
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setStatusFilter('all')}>
+            Clear filter
+          </Button>
+        </div>
+      )}
+
       <div className="flex gap-4 items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -217,7 +249,20 @@ export default function CustomersPage() {
           />
         </div>
 
-{/* Dialog Box to Create Customer */}
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {statuses.map((s) => (
+              <SelectItem key={s.id} value={s.id.toString()}>
+                {s.status_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -411,11 +456,12 @@ export default function CustomersPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((customer) => {
-                      console.log("Customer Status:", customer.status_name);
-                    
-                   return  (
-                    <TableRow key={customer.id}   onClick={() => router.push(`/customers/${customer.id}`)}>
+                  filtered.map((customer) => (
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/customers/${customer.id}`)}
+                    >
                       <TableCell>{customer.customer_code}</TableCell>
 
                       <TableCell>
@@ -513,7 +559,7 @@ export default function CustomersPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  )})
+                  ))
                 )}
               </TableBody>
             </Table>

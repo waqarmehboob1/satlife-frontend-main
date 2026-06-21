@@ -19,6 +19,7 @@ import { getProjectCountByOrderId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
 import { EntityNameWithFault } from '@/components/entity-fault-ping';
 import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
+import { OrdersMiniDashboard } from '@/components/orders/orders-mini-dashboard';
 
 type OrderForm = {
   order_number?: string
@@ -58,6 +59,7 @@ export default function OrdersPage() {
   const faultMap = useEntityFaultMap();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [customerFilter, setCustomerFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -65,7 +67,6 @@ export default function OrdersPage() {
   const [formData, setFormData] = useState<OrderForm>(emptyOrderForm);
   const [statuses, setStatuses] = useState<Models.Status[]>([]);
   const [loadingStatuses, setLoadingStatuses] = useState(true);
-  const [customer, setcustomer] = useState<Models.Customer[]>([]);
 
   const projectCountByOrder = useMemo(
     () => getProjectCountByOrderId(projects),
@@ -73,10 +74,20 @@ export default function OrdersPage() {
   );
 
   const filtered = orders.filter((o) => {
-    // const matchesSearch = o.order_number.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      !search.trim() ||
+      o.order_number?.toLowerCase().includes(search.toLowerCase()) ||
+      o.title?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || o.status_id?.toString() === statusFilter;
-    return matchesStatus;
+    const matchesCustomer =
+      customerFilter === 'all' || o.customer_id?.toString() === customerFilter;
+    return matchesSearch && matchesStatus && matchesCustomer;
   });
+
+  const filteredCustomer = useMemo(
+    () => (customerFilter === 'all' ? null : customers.find((c) => String(c.id) === customerFilter)),
+    [customerFilter, customers]
+  );
 
   async function handleCreate() {
     if (
@@ -195,6 +206,43 @@ export default function OrdersPage() {
         <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
         <p className="text-muted-foreground mt-2">Manage all orders</p>
       </div>
+
+      <OrdersMiniDashboard
+        orders={orders}
+        projects={projects}
+        customers={customers}
+        orderStatuses={statuses}
+        activeOrderStatusId={statusFilter}
+        activeCustomerId={customerFilter}
+        onOrderStatusFilter={setStatusFilter}
+        onCustomerFilter={setCustomerFilter}
+      />
+
+      {(statusFilter !== 'all' || customerFilter !== 'all') && (
+        <div className="flex flex-wrap items-center gap-2">
+          {statusFilter !== 'all' && (
+            <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+              Status:{' '}
+              <strong>{statuses.find((s) => String(s.id) === statusFilter)?.status_name}</strong>
+            </span>
+          )}
+          {filteredCustomer && (
+            <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+              Customer: <strong>{filteredCustomer.name}</strong>
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStatusFilter('all');
+              setCustomerFilter('all');
+            }}
+          >
+            Clear filters
+          </Button>
+        </div>
+      )}
 
       <div className="flex gap-4 items-center">
         <div className="flex-1 relative">

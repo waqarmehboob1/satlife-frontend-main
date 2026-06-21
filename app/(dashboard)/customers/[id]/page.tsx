@@ -1,5 +1,4 @@
 'use client';
-'use client';
 
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -7,22 +6,20 @@ import { useDataStore } from '@/lib/data-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowLeft, FileText, Calendar, Layers, CircleArrowLeft } from 'lucide-react';
+import { CircleArrowLeft } from 'lucide-react';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash2, Search, Clock, AlertTriangle, Pencil, Zap, Pause, CheckCircle } from 'lucide-react';
-import { StatusBadge } from '@/components/status-badge';
-import { EntityCards } from '@/components/entity-cards';
-import { EntityForm } from '@/components/entity-form';
+import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import * as api from '@/lib/api';
 import * as Models from '@/lib/models';
 import { Badge } from '@/components/ui/badge';
+import { CustomerMiniDashboard } from '@/components/customers/customer-mini-dashboard';
 
 type OrderForm = {
   order_number?: string
@@ -72,45 +69,17 @@ export default function CustomerDetailPage(){
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [formData, setFormData] = useState<OrderForm>(emptyOrderForm);
-    const totalProjects = customerProjects.length;
     
-    const [
-    Created,
-    Confirmed,
-    Processing,
-    Shipped,
-    Delivered,
-    Cancelled,
-    ] = [
-    "Created",
-    "Confirmed",
-    "Processing",
-    "Shipped",
-    "Delivered",
-    "Cancelled",
-    ].map(
-    (status) =>
-        customerOrders.filter((o) => o.status?.status_name === status).length
-    );  
-
     const [statuses, setStatuses] = useState<Models.Status[]>([]);
-    const orderStatusCounts = statuses.map((status) => ({
-            id: status.id,
-            name: status.status_name,
-            count: customerOrders.filter(
-                (order) => order.status?.status_name === status.status_name
-            ).length,
-            }));
-    console.log("orderStatusCounts",orderStatusCounts)
-    console.log("customerOrders",customerOrders)
-    
-    
     const [loadingStatuses, setLoadingStatuses] = useState(true);
  
     const filtered = customerOrders.filter((o) => {
-    // const matchesSearch = o.order_number.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      !search.trim() ||
+      o.order_number?.toLowerCase().includes(search.toLowerCase()) ||
+      o.title?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || o.status_id?.toString() === statusFilter;
-    return matchesStatus;
+    return matchesSearch && matchesStatus;
   });
 
   async function handleCreate() {
@@ -203,10 +172,10 @@ export default function CustomerDetailPage(){
     useEffect(() => {
       const fetchData = async () => {
         try {
-          const statusRes = await api.statuses.list("orders");
+          const statusRes = await api.statuses.list('orders');
           setStatuses(statusRes.data);
         } catch (err) {
-          console.error("Failed to fetch statuses or hierarchy names", err);
+          console.error('Failed to fetch statuses', err);
         } finally {
           setLoadingStatuses(false);
         }
@@ -264,68 +233,14 @@ export default function CustomerDetailPage(){
             
                
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Organization */}
-                <Card className="shadow-sm">
-                    <CardContent className="flex items-center gap-3 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <FileText className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                        <p className="text-xs text-muted-foreground">Organization</p>
-                        <p className="text-sm font-medium">{customer?.organization_type || "Not Specified"}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-                {/* Total Orders */}
-                <Card className="shadow-sm">
-                    <CardContent className="flex items-center gap-3 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Calendar className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                        <p className="text-xs text-muted-foreground">Total Orders</p>
-                        <p className="text-sm font-medium">{customerOrders.length || 0 }</p>
-                            {orderStatusCounts.map((status) => (
-                            <div key={status.id}>
-                                {status.name}: {status.count}
-                            </div>
-                            ))}
-
-                        {/* <p className="text-sm font-medium">Created : {orderStatusCounts.name || 0 }</p>
-                        <p className="text-sm font-medium">Confirmed : {Confirmed || 0 }</p>
-                        <p className="text-sm font-medium">Processing : {Processing || 0 }</p>
-                        <p className="text-sm font-medium">Shipped : {Shipped || 0 }</p>
-                        <p className="text-sm font-medium">Delivered : {Delivered || 0 }</p>
-                        <p className="text-sm font-medium">Cancelled : {Cancelled || 0 }</p> */}
-                        </div>
-                    </CardContent>
-                </Card>
-                {/* Total Projects */}
-                <Card className="shadow-sm">
-                    <CardContent className="flex items-center gap-3 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Layers className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                        <p className="text-xs text-muted-foreground">Total Projects</p>
-                        <p className="text-sm font-medium">{customerProjects.length}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-                {/* Status */}
-                <Card className="shadow-sm">
-                    <CardContent className="flex items-center gap-3 p-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <FileText className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                        <p className="text-xs text-muted-foreground">Status</p>
-                        <StatusBadge status={customer.status_name || 'Unknown'} />
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+            <CustomerMiniDashboard
+              customer={customer}
+              orders={customerOrders}
+              projects={customerProjects}
+              orderStatuses={statuses}
+              activeOrderStatusId={statusFilter}
+              onOrderStatusFilter={setStatusFilter}
+            />
 
             <div className="space-y-8">
             {/* <div>
@@ -357,7 +272,12 @@ export default function CustomerDetailPage(){
                 </SelectContent>
                 </Select>
 
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <Dialog open={isCreateOpen} onOpenChange={(open) => {
+                  setIsCreateOpen(open);
+                  if (open && customer) {
+                    setFormData((prev) => ({ ...prev, customer_id: customer.id }));
+                  }
+                }}>
                 <DialogTrigger asChild>
                     <Button className="gap-2">
                     <Plus className="h-4 w-4" />

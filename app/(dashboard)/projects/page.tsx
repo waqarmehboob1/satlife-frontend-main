@@ -10,26 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash2, Search, Clock, AlertTriangle, Zap, Pause, CheckCircle,Sigma , Presentation, type LucideIcon, BarChart3 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/status-badge';
 import * as api from '@/lib/api';
 import * as Models from '@/lib/models';
-import { KPICard } from '@/components/kpi-card';
+import { EntityNameWithFault } from '@/components/entity-fault-ping';
+import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
+import { ProjectsMiniDashboard } from '@/components/projects/projects-mini-dashboard';
 import { getSystemCountByProjectId, getCount } from '@/lib/entity-counts';
 import { EntityCountCell } from '@/components/entity-count-cell';
 import { Progress } from '@/components/ui/progress';
 import { ProjectProgressDialog } from '@/components/projects/project-progress-dialog';
-import { EntityNameWithFault } from '@/components/entity-fault-ping';
-import { useEntityFaultMap } from '@/hooks/use-entity-fault-map';
-
-interface StatusCount {
-  status: string;
-  count: number;
-  icon: LucideIcon;
-  color: 'blue' | 'green' | 'red' | 'amber' | 'orange' | 'slate' | 'emerald';
-}
-
 
 export default function ProjectsPage(){
   const router = useRouter();
@@ -59,46 +51,14 @@ export default function ProjectsPage(){
   const [statuses, setStatuses] = useState<Models.Status[]>([]);
   const [loadingStatuses, setLoadingStatuses] = useState(true);
 
+  const orderScopedProjects = useMemo(
+    () =>
+      orderFilterId
+        ? projects.filter((p) => p.order_id === orderFilterId)
+        : projects,
+    [projects, orderFilterId]
+  );
 
-    // const statusCounts: StatusCount[] = [
-    //   {
-    //     status: 'Total',
-    //     count: totalCount,
-    //     icon: Package,
-    //     color: 'emerald',
-    //   },
-    //   {
-    //     status: 'open',
-    //     count: cases.filter((c) => c.status === 'open').length,
-    //     icon: AlertCircle,
-    //     color: 'blue',
-    //   },
-    //   {
-    //     status: 'under_inspection',
-    //     count: cases.filter((c) => c.status === 'under_inspection').length,
-    //     icon: Wrench,
-    //     color: 'amber',
-    //   },
-    //   {
-    //     status: 'under_repair',
-    //     count: cases.filter((c) => c.status === 'under_repair').length,
-    //     icon: Wrench,
-    //     color: 'orange',
-    //   },
-    //   {
-    //     status: 'resolved',
-    //     count: cases.filter((c) => c.status === 'resolved').length,
-    //     icon: CheckCircle2,
-    //     color: 'green',
-    //   },
-    //   {
-    //     status: 'closed',
-    //     count: cases.filter((c) => c.status === 'closed').length,
-    //     icon: Lock,
-    //     color: 'slate',
-    //   },
-    // ];
-  
   const systemCountByProject = useMemo(
     () => getSystemCountByProjectId(systems),
     [systems]
@@ -195,25 +155,6 @@ export default function ProjectsPage(){
     });
     setIsEditOpen(true);
   }
-  const icons = {
-                'Initiation': Clock,
-                'Planning': Presentation,
-                'Execution': Zap,
-                'Monitoring': AlertTriangle,
-                'Completed': CheckCircle,
-                'On Hold': Pause,
-                'Total': Sigma ,
-              };
-  const status_colors = {
-                'Initiation': 'blue',
-                'Planning': 'amber',
-                'Execution': 'emerald',
-                'Monitoring': 'orange',
-                'Completed': 'green',
-                'On Hold': 'slate',
-                'Total': 'red',
-              } as const;
-  const Icon = icons['Total'] || Clock;
 
   useEffect(() => {
       const fetchStatuses = async () => {
@@ -233,22 +174,6 @@ export default function ProjectsPage(){
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
   const filteredOrder = orderFilterId ? orders.find((o) => o.id === orderFilterId) : null;
-  const statusNames = statuses.map((status) => status.status_name);
-  console.log("statusNames", statusNames);
-  
-  statusNames.unshift("Total");
-  const Project_status = statusNames.map((status) => ({
-      s_name: status,
-      s_count: status!= "Total"? projects.filter((item) => item.status_name === status).length : projects.length,
-      s_icon: icons[status as keyof typeof icons] ?? Clock,
-      s_color: status_colors[status as keyof typeof status_colors],
-    }));
-
-
-  console.log(statuses)
-  console.log(statusNames)
-  console.log(filtered)
-  console.log(Project_status)
 
   return (
     <div className="space-y-8">
@@ -267,34 +192,25 @@ export default function ProjectsPage(){
         ) : null}
       </div>
 
-      {/* Project Status cards mini dashboard*/}
-      <div className="">
-          {statuses.length > 0 && (
+      <ProjectsMiniDashboard
+        projects={orderScopedProjects}
+        systems={systems}
+        projectStatuses={statuses}
+        activeStatusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+        filteredOrder={filteredOrder}
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:grid-cols-7 items-stretch">
-            {Project_status.map((item) => (
-              <button
-                key={item.s_name}
-                onClick={() => setStatusFilter(item.s_name)}
-                className="w-full h-full cursor-pointer"
-              >
-                <div className = "h-full w-full" >
-
-                
-                <KPICard
-                  title={item.s_name.replace(/_/g, ' ').charAt(0).toUpperCase() + item.s_name.replace(/_/g, ' ').slice(1)}
-                  value={item.s_count}
-                  change={item.s_name != 'Total'? Math.round(100* item.s_count/projects.length):0}
-                  icon={item.s_icon}
-                  accentColor={item.s_color}
-                  isSelected={statusFilter === item.s_name}
-                />
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div> 
+      {statusFilter !== 'Total' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border bg-muted px-3 py-1 text-sm">
+            Status: <strong>{statusFilter}</strong>
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => setStatusFilter('Total')}>
+            Clear status filter
+          </Button>
+        </div>
+      )}
 
       <div className="flex gap-4 items-center">
         <div className="flex-1 relative">
